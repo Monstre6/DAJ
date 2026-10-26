@@ -40,12 +40,13 @@
 <ul id="liste"></ul>
 <button id="vider" class="petit">Tout effacer</button>
 <br>
-<button id="fusionner">Fusionner (par lots de 5)</button>
+<button id="fusionner">Fusionner (par lots de 10)</button>
 
 <progress id="barre" max="100" value="0"></progress>
 <div id="statut"></div>
 
 <div id="parties"></div>
+<button id="toutTelecharger" style="display:none">Télécharger toutes les parties</button>
 
 <div id="chapitresBloc" style="display:none">
   <h3>Timestamps pour YouTube</h3>
@@ -56,9 +57,10 @@
 <script>
 const TAUX = 44100;
 const CANAUX = 2;
-const TAILLE_LOT = 5;
+const TAILLE_LOT = 10;
 const EXT = /\.(mp3|wav|m4a|ogg|flac|aac)$/i;
 let morceaux = [];   // { nom, lire() } : lire() renvoie un ArrayBuffer
+let liensParties = [];
 
 const zone = document.getElementById('zone');
 const liste = document.getElementById('liste');
@@ -68,6 +70,7 @@ const inputFichiers = document.getElementById('inputFichiers');
 const inputDossier = document.getElementById('inputDossier');
 const boutonFusion = document.getElementById('fusionner');
 const zoneParties = document.getElementById('parties');
+const boutonTout = document.getElementById('toutTelecharger');
 
 document.getElementById('btnFichiers').onclick = () => inputFichiers.click();
 document.getElementById('btnDossier').onclick = () => inputDossier.click();
@@ -201,6 +204,14 @@ function telecharger(blob, nomFichier) {
   return lien;
 }
 
+// Lance les téléchargements l'un après l'autre, avec une pause entre chaque
+boutonTout.addEventListener('click', async () => {
+  for (const lien of liensParties) {
+    lien.click();
+    await new Promise(r => setTimeout(r, 1500));
+  }
+});
+
 boutonFusion.addEventListener('click', async () => {
   if (morceaux.length === 0) { statut.textContent = 'Ajoutez d\'abord des fichiers ou un ZIP.'; return; }
 
@@ -209,6 +220,8 @@ boutonFusion.addEventListener('click', async () => {
   barre.value = 0;
   zoneParties.innerHTML = '';
   zoneParties.style.display = 'block';
+  liensParties = [];
+  boutonTout.style.display = 'none';
   document.getElementById('chapitresBloc').style.display = 'none';
 
   const contexte = new (window.AudioContext || window.webkitAudioContext)({ sampleRate: TAUX });
@@ -239,15 +252,18 @@ boutonFusion.addEventListener('click', async () => {
       const wav = new Blob([entete(framesLot), ...blocs], { type: 'audio/wav' });
       const nomFichier = `partie-${String(lot + 1).padStart(2, '0')}.wav`;
       const bloc = document.createElement('div');
-      bloc.appendChild(telecharger(wav, nomFichier));
+      const lien = telecharger(wav, nomFichier);
+      liensParties.push(lien);
+      bloc.appendChild(lien);
       const info = document.createElement('span');
       info.textContent = ` (${Math.round(framesLot / TAUX / 60)} min)`;
       bloc.appendChild(info);
       zoneParties.appendChild(bloc);
     }
 
-    statut.textContent = `Terminé : ${nbLots} partie(s), environ ${Math.round(frameGlobal / TAUX / 60)} minutes au total. Téléchargez les parties une par une.`;
+    statut.textContent = `Terminé : ${nbLots} partie(s), environ ${Math.round(frameGlobal / TAUX / 60)} minutes au total.`;
     barre.value = 100;
+    boutonTout.style.display = 'inline-block';
     document.getElementById('chapitres').value = toutesLesLignes.join('\n');
     document.getElementById('chapitresBloc').style.display = 'block';
   } catch (err) {
