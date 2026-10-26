@@ -26,10 +26,10 @@
 <h2>Fusion de fichiers audio</h2>
 
 <div id="zone">
-  Glissez vos fichiers audio ou vos fichiers ZIP ici<br><br>
-  <button id="btnFichiers">Choisir des fichiers ou un ZIP</button>
+  Glissez vos musiques, vos ZIP ou vos 7z ici<br><br>
+  <button id="btnFichiers">Choisir des fichiers, ZIP ou 7z</button>
   <button id="btnDossier">Choisir un dossier</button>
-  <input type="file" id="inputFichiers" multiple accept="audio/*,.zip">
+  <input type="file" id="inputFichiers" multiple accept="audio/*,.zip,.7z">
   <input type="file" id="inputDossier" webkitdirectory>
 </div>
 
@@ -68,40 +68,80 @@ document.getElementById('btnDossier').onclick = () => inputDossier.click();
 function nomBase(chemin) { return chemin.split('/').pop(); }
 
 function estAudio(nom) {
-  return EXT.test(nom) && !nom.includes('__MACOSX') && !nomBase(nom).startsWith('.');
+  const base = nomBase(nom);
+  return EXT.test(base) && !nom.includes('__MACOSX') && !base.startsWith('.');
 }
 
 function trier(tab) {
   tab.sort((a, b) => a.nom.localeCompare(b.nom, 'fr', { numeric: true }));
 }
 
-// Ajoute un ZIP : chaque musique qu'il contient devient un morceau
-async function ajouterZip(fichier) {
+// ZIP : chaque musique contenue devient un morceau
+async function lireZip(fichier) {
   statut.textContent = `Lecture du ZIP : ${fichier.name}...`;
   const zip = await JSZip.loadAsync(fichier);
-  const nouveaux = [];
+  const sortie = [];
   for (const entree of Object.values(zip.files)) {
     if (entree.dir || !estAudio(entree.name)) continue;
-    nouveaux.push({
+    sortie.push({
       nom: nomBase(entree.name),
       lire: () => entree.async('arraybuffer')
     });
   }
-  trier(nouveaux);
-  return nouveaux;
+  return sortie;
+}
+
+// 7z : chargé seulement quand on en ajoute un
+let sevenZip = null;
+async function chargerSevenZip() {
+  if (!sevenZip) {
+    statut.textContent = 'Chargement du lecteur 7z...';
+    const module = await import('https://cdn.jsdelivr.net/npm/7z-wasm@1.0.0/7zz.es6.js');
+    sevenZip = await module.default();
+  }
+  return sevenZip;
+}
+
+async function lire7z(fichier) {
+  statut.textContent = `Lecture de l'archive 7z : ${fichier.name}...`;
+  const sz = await chargerSevenZip();
+  const donnees = new Uint8Array(await fichier.arrayBuffer());
+  sz.FS.writeFile('/entree.7z', donnees);
+  sz.callMain(['x', '/entree.7z', '-o/extrait', '-y']);
+
+  const sortie = [];
+  function parcourir(dossier) {
+    for (const nom of sz.FS.readdir(dossier)) {
+      if (nom === '.' || nom === '..') continue;
+      const chemin = dossier + '/' + nom;
+      if (sz.FS.isDir(sz.FS.stat(chemin).mode)) {
+        parcourir(chemin);
+      } else if (estAudio(nom)) {
+        const octets = sz.FS.readFile(chemin);
+        sortie.push({
+          nom,
+          lire: async () => octets.buffer.slice(octets.byteOffset, octets.byteOffset + octets.byteLength)
+        });
+      }
+    }
+  }
+  parcourir('/extrait');
+  return sortie;
 }
 
 async function ajouter(liste_fichiers) {
   const sources = [];
   for (const f of Array.from(liste_fichiers)) {
-    if (/\.zip$/i.test(f.name)) {
-      try {
-        sources.push(...await ajouterZip(f));
-      } catch (err) {
-        statut.textContent = `Impossible de lire ${f.name} : ${err.message}`;
+    try {
+      if (/\.zip$/i.test(f.name)) {
+        sources.push(...await lireZip(f));
+      } else if (/\.7z$/i.test(f.name)) {
+        sources.push(...await lire7z(f));
+      } else if (f.type.startsWith('audio') || EXT.test(f.name)) {
+        sources.push({ nom: f.name, lire: () => f.arrayBuffer() });
       }
-    } else if (f.type.startsWith('audio') || EXT.test(f.name)) {
-      sources.push({ nom: f.name, lire: () => f.arrayBuffer() });
+    } catch (err) {
+      statut.textContent = `Impossible de lire ${f.name} : ${err.message}`;
     }
   }
   trier(sources);
@@ -187,7 +227,7 @@ async function decoder(contexte, source) {
 }
 
 boutonFusion.addEventListener('click', async () => {
-  if (morceaux.length === 0) { statut.textContent = 'Ajoutez d\'abord des fichiers ou un ZIP.'; return; }
+  if (morceaux.length === 0) { statut.textContent = 'Ajoutez d\'abord des fichiers, ZIP ou 7z.'; return; }
 
   const streaming = !!window.showSaveFilePicker;
   let flux = null;
@@ -212,7 +252,7 @@ boutonFusion.addEventListener('click', async () => {
 
   try {
     if (streaming) {
-      // Passe 1 : durée de chaque morceau (sans rien garder en mémoire)
+      // Passe 1 : durée de chaque morceau
       const durees = [];
       for (let i = 0; i < morceaux.length; i++) {
         statut.textContent = `Analyse ${i + 1} / ${morceaux.length}`;
@@ -237,11 +277,8 @@ boutonFusion.addEventListener('click', async () => {
       }
       await flux.close();
       statut.textContent = `Terminé : environ ${Math.round(total / TAUX / 60)} minutes, fichier enregistré.`;
-      barre.value = 100;
-      document.getElementById('chapitres').value = lignes.join('\n');
-      document.getElementById('chapitresBloc').style.display = 'block';
     } else {
-      // Téléphone / navigateur sans enregistrement direct : téléchargement final
+      // Téléphone ou navigateur sans enregistrement direct : téléchargement final
       const blocs = [];
       let frames = 0;
       for (let i = 0; i < morceaux.length; i++) {
@@ -262,10 +299,10 @@ boutonFusion.addEventListener('click', async () => {
       lien.click();
       lien.remove();
       statut.textContent = `Terminé : environ ${Math.round(frames / TAUX / 60)} minutes. Téléchargement lancé.`;
-      barre.value = 100;
-      document.getElementById('chapitres').value = lignes.join('\n');
-      document.getElementById('chapitresBloc').style.display = 'block';
     }
+    barre.value = 100;
+    document.getElementById('chapitres').value = lignes.join('\n');
+    document.getElementById('chapitresBloc').style.display = 'block';
   } catch (err) {
     if (flux) { try { await flux.abort(); } catch {} }
     statut.textContent = 'Erreur : ' + err.message + ' (essayez moins de fichiers à la fois)';
