@@ -20,16 +20,18 @@
   progress { width: 100%; height: 14px; display: none; }
   textarea { width: 100%; height: 220px; margin-top: 10px; font-family: monospace; box-sizing: border-box; }
   input[type=file] { display: none; }
+  #parties a { display: block; margin: 8px 0; font-size: 1.05em; }
+  #parties { display: none; margin-top: 15px; }
 </style>
 </head>
 <body>
 <h2>Fusion de fichiers audio</h2>
 
 <div id="zone">
-  Glissez vos musiques, vos ZIP ou vos 7z ici<br><br>
-  <button id="btnFichiers">Choisir des fichiers, ZIP ou 7z</button>
+  Glissez vos musiques ou vos fichiers ZIP ici<br><br>
+  <button id="btnFichiers">Choisir des fichiers ou un ZIP</button>
   <button id="btnDossier">Choisir un dossier</button>
-  <input type="file" id="inputFichiers" multiple accept="audio/*,.zip,.7z">
+  <input type="file" id="inputFichiers" multiple accept="audio/*,.zip">
   <input type="file" id="inputDossier" webkitdirectory>
 </div>
 
@@ -37,10 +39,12 @@
 <ul id="liste"></ul>
 <button id="vider" class="petit">Tout effacer</button>
 <br>
-<button id="fusionner">Fusionner en un seul fichier</button>
+<button id="fusionner">Fusionner (par lots de 20)</button>
 
 <progress id="barre" max="100" value="0"></progress>
 <div id="statut"></div>
+
+<div id="parties"></div>
 
 <div id="chapitresBloc" style="display:none">
   <h3>Timestamps pour YouTube</h3>
@@ -51,6 +55,7 @@
 <script>
 const TAUX = 44100;
 const CANAUX = 2;
+const TAILLE_LOT = 20;
 const EXT = /\.(mp3|wav|m4a|ogg|flac|aac)$/i;
 let morceaux = [];   // { nom, lire() } : lire() renvoie un ArrayBuffer
 
@@ -61,6 +66,7 @@ const barre = document.getElementById('barre');
 const inputFichiers = document.getElementById('inputFichiers');
 const inputDossier = document.getElementById('inputDossier');
 const boutonFusion = document.getElementById('fusionner');
+const zoneParties = document.getElementById('parties');
 
 document.getElementById('btnFichiers').onclick = () => inputFichiers.click();
 document.getElementById('btnDossier').onclick = () => inputDossier.click();
@@ -76,56 +82,14 @@ function trier(tab) {
   tab.sort((a, b) => a.nom.localeCompare(b.nom, 'fr', { numeric: true }));
 }
 
-// ZIP : chaque musique contenue devient un morceau
 async function lireZip(fichier) {
   statut.textContent = `Lecture du ZIP : ${fichier.name}...`;
   const zip = await JSZip.loadAsync(fichier);
   const sortie = [];
   for (const entree of Object.values(zip.files)) {
     if (entree.dir || !estAudio(entree.name)) continue;
-    sortie.push({
-      nom: nomBase(entree.name),
-      lire: () => entree.async('arraybuffer')
-    });
+    sortie.push({ nom: nomBase(entree.name), lire: () => entree.async('arraybuffer') });
   }
-  return sortie;
-}
-
-// 7z : chargé seulement quand on en ajoute un
-let sevenZip = null;
-async function chargerSevenZip() {
-  if (!sevenZip) {
-    statut.textContent = 'Chargement du lecteur 7z...';
-    const module = await import('https://cdn.jsdelivr.net/npm/7z-wasm@1.0.0/7zz.es6.js');
-    sevenZip = await module.default();
-  }
-  return sevenZip;
-}
-
-async function lire7z(fichier) {
-  statut.textContent = `Lecture de l'archive 7z : ${fichier.name}...`;
-  const sz = await chargerSevenZip();
-  const donnees = new Uint8Array(await fichier.arrayBuffer());
-  sz.FS.writeFile('/entree.7z', donnees);
-  sz.callMain(['x', '/entree.7z', '-o/extrait', '-y']);
-
-  const sortie = [];
-  function parcourir(dossier) {
-    for (const nom of sz.FS.readdir(dossier)) {
-      if (nom === '.' || nom === '..') continue;
-      const chemin = dossier + '/' + nom;
-      if (sz.FS.isDir(sz.FS.stat(chemin).mode)) {
-        parcourir(chemin);
-      } else if (estAudio(nom)) {
-        const octets = sz.FS.readFile(chemin);
-        sortie.push({
-          nom,
-          lire: async () => octets.buffer.slice(octets.byteOffset, octets.byteOffset + octets.byteLength)
-        });
-      }
-    }
-  }
-  parcourir('/extrait');
   return sortie;
 }
 
@@ -135,8 +99,6 @@ async function ajouter(liste_fichiers) {
     try {
       if (/\.zip$/i.test(f.name)) {
         sources.push(...await lireZip(f));
-      } else if (/\.7z$/i.test(f.name)) {
-        sources.push(...await lire7z(f));
       } else if (f.type.startsWith('audio') || EXT.test(f.name)) {
         sources.push({ nom: f.name, lire: () => f.arrayBuffer() });
       }
@@ -226,86 +188,65 @@ async function decoder(contexte, source) {
   return contexte.decodeAudioData(await source.lire());
 }
 
+function telecharger(blob, nomFichier) {
+  const lien = document.createElement('a');
+  lien.href = URL.createObjectURL(blob);
+  lien.download = nomFichier;
+  lien.textContent = 'Télécharger ' + nomFichier;
+  return lien;
+}
+
 boutonFusion.addEventListener('click', async () => {
-  if (morceaux.length === 0) { statut.textContent = 'Ajoutez d\'abord des fichiers, ZIP ou 7z.'; return; }
-
-  const streaming = !!window.showSaveFilePicker;
-  let flux = null;
-
-  if (streaming) {
-    try {
-      const fichierSortie = await window.showSaveFilePicker({
-        suggestedName: 'musique-fusionnee.wav',
-        types: [{ description: 'Fichier WAV', accept: { 'audio/wav': ['.wav'] } }]
-      });
-      flux = await fichierSortie.createWritable();
-    } catch { return; } // annulé
-  }
+  if (morceaux.length === 0) { statut.textContent = 'Ajoutez d\'abord des fichiers ou un ZIP.'; return; }
 
   boutonFusion.disabled = true;
   barre.style.display = 'block';
   barre.value = 0;
+  zoneParties.innerHTML = '';
+  zoneParties.style.display = 'block';
   document.getElementById('chapitresBloc').style.display = 'none';
 
   const contexte = new (window.AudioContext || window.webkitAudioContext)({ sampleRate: TAUX });
-  const lignes = [];
+  const toutesLesLignes = [];
+  let frameGlobal = 0;           // position dans la vidéo complète
+  const nbLots = Math.ceil(morceaux.length / TAILLE_LOT);
 
   try {
-    if (streaming) {
-      // Passe 1 : durée de chaque morceau
-      const durees = [];
-      for (let i = 0; i < morceaux.length; i++) {
-        statut.textContent = `Analyse ${i + 1} / ${morceaux.length}`;
-        const audio = await decoder(contexte, morceaux[i]);
-        durees.push(audio.length);
-        barre.value = Math.round(((i + 1) / morceaux.length) * 40);
-        await new Promise(r => setTimeout(r, 0));
-      }
-      const total = durees.reduce((a, b) => a + b, 0);
-
-      // Passe 2 : écriture directe sur le disque
-      await flux.write(entete(total));
-      let decalage = 0;
-      for (let i = 0; i < morceaux.length; i++) {
-        statut.textContent = `Fusion ${i + 1} / ${morceaux.length} : ${morceaux[i].nom}`;
-        lignes.push(`${formaterTemps(decalage / TAUX)} ${morceaux[i].nom.replace(/\.[^.]+$/, '')}`);
-        const audio = await decoder(contexte, morceaux[i]);
-        await flux.write(versPcm(audio));
-        decalage += audio.length;
-        barre.value = 40 + Math.round(((i + 1) / morceaux.length) * 60);
-        await new Promise(r => setTimeout(r, 0));
-      }
-      await flux.close();
-      statut.textContent = `Terminé : environ ${Math.round(total / TAUX / 60)} minutes, fichier enregistré.`;
-    } else {
-      // Téléphone ou navigateur sans enregistrement direct : téléchargement final
+    for (let lot = 0; lot < nbLots; lot++) {
+      const debut = lot * TAILLE_LOT;
+      const groupe = morceaux.slice(debut, debut + TAILLE_LOT);
       const blocs = [];
-      let frames = 0;
-      for (let i = 0; i < morceaux.length; i++) {
-        statut.textContent = `Fusion ${i + 1} / ${morceaux.length} : ${morceaux[i].nom}`;
-        lignes.push(`${formaterTemps(frames / TAUX)} ${morceaux[i].nom.replace(/\.[^.]+$/, '')}`);
-        const audio = await decoder(contexte, morceaux[i]);
+      let framesLot = 0;
+
+      for (let k = 0; k < groupe.length; k++) {
+        const numero = debut + k + 1;
+        statut.textContent = `Partie ${lot + 1}/${nbLots} : morceau ${numero}/${morceaux.length} (${groupe[k].nom})`;
+        const audio = await decoder(contexte, groupe[k]);
+        const nomPropre = groupe[k].nom.replace(/\.[^.]+$/, '');
+        toutesLesLignes.push(`${formaterTemps(frameGlobal / TAUX)} ${nomPropre}`);
         blocs.push(versPcm(audio).buffer);
-        frames += audio.length;
-        barre.value = Math.round(((i + 1) / morceaux.length) * 90);
+        framesLot += audio.length;
+        frameGlobal += audio.length;
+        barre.value = Math.round((numero / morceaux.length) * 100);
         await new Promise(r => setTimeout(r, 0));
       }
-      statut.textContent = 'Préparation du téléchargement...';
-      const wav = new Blob([entete(frames), ...blocs], { type: 'audio/wav' });
-      const lien = document.createElement('a');
-      lien.href = URL.createObjectURL(wav);
-      lien.download = 'musique-fusionnee.wav';
-      document.body.appendChild(lien);
-      lien.click();
-      lien.remove();
-      statut.textContent = `Terminé : environ ${Math.round(frames / TAUX / 60)} minutes. Téléchargement lancé.`;
+
+      const wav = new Blob([entete(framesLot), ...blocs], { type: 'audio/wav' });
+      const nomFichier = `partie-${String(lot + 1).padStart(2, '0')}.wav`;
+      const bloc = document.createElement('div');
+      bloc.appendChild(telecharger(wav, nomFichier));
+      const info = document.createElement('span');
+      info.textContent = ` (${Math.round(framesLot / TAUX / 60)} min)`;
+      bloc.appendChild(info);
+      zoneParties.appendChild(bloc);
     }
+
+    statut.textContent = `Terminé : ${nbLots} partie(s), environ ${Math.round(frameGlobal / TAUX / 60)} minutes au total. Téléchargez les parties si vous voulez.`;
     barre.value = 100;
-    document.getElementById('chapitres').value = lignes.join('\n');
+    document.getElementById('chapitres').value = toutesLesLignes.join('\n');
     document.getElementById('chapitresBloc').style.display = 'block';
   } catch (err) {
-    if (flux) { try { await flux.abort(); } catch {} }
-    statut.textContent = 'Erreur : ' + err.message + ' (essayez moins de fichiers à la fois)';
+    statut.textContent = 'Erreur : ' + err.message + ' (essayez moins de morceaux à la fois)';
   } finally {
     boutonFusion.disabled = false;
     contexte.close();
