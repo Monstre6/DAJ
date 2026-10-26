@@ -20,8 +20,9 @@
   progress { width: 100%; height: 14px; display: none; }
   textarea { width: 100%; height: 220px; margin-top: 10px; font-family: monospace; box-sizing: border-box; }
   input[type=file] { display: none; }
-  #parties a { display: block; margin: 8px 0; font-size: 1.05em; }
   #parties { display: none; margin-top: 15px; }
+  #parties div { margin: 10px 0; }
+  #parties a { font-size: 1.05em; }
 </style>
 </head>
 <body>
@@ -39,7 +40,7 @@
 <ul id="liste"></ul>
 <button id="vider" class="petit">Tout effacer</button>
 <br>
-<button id="fusionner">Fusionner (par lots de 20)</button>
+<button id="fusionner">Fusionner (par lots de 5)</button>
 
 <progress id="barre" max="100" value="0"></progress>
 <div id="statut"></div>
@@ -55,7 +56,7 @@
 <script>
 const TAUX = 44100;
 const CANAUX = 2;
-const TAILLE_LOT = 20;
+const TAILLE_LOT = 5;
 const EXT = /\.(mp3|wav|m4a|ogg|flac|aac)$/i;
 let morceaux = [];   // { nom, lire() } : lire() renvoie un ArrayBuffer
 
@@ -189,10 +190,14 @@ async function decoder(contexte, source) {
 }
 
 function telecharger(blob, nomFichier) {
+  const url = URL.createObjectURL(blob);
   const lien = document.createElement('a');
-  lien.href = URL.createObjectURL(blob);
+  lien.href = url;
   lien.download = nomFichier;
   lien.textContent = 'Télécharger ' + nomFichier;
+  lien.addEventListener('click', () => {
+    setTimeout(() => { URL.revokeObjectURL(url); lien.remove(); }, 60000);
+  });
   return lien;
 }
 
@@ -208,7 +213,7 @@ boutonFusion.addEventListener('click', async () => {
 
   const contexte = new (window.AudioContext || window.webkitAudioContext)({ sampleRate: TAUX });
   const toutesLesLignes = [];
-  let frameGlobal = 0;           // position dans la vidéo complète
+  let frameGlobal = 0;
   const nbLots = Math.ceil(morceaux.length / TAILLE_LOT);
 
   try {
@@ -241,7 +246,7 @@ boutonFusion.addEventListener('click', async () => {
       zoneParties.appendChild(bloc);
     }
 
-    statut.textContent = `Terminé : ${nbLots} partie(s), environ ${Math.round(frameGlobal / TAUX / 60)} minutes au total. Téléchargez les parties si vous voulez.`;
+    statut.textContent = `Terminé : ${nbLots} partie(s), environ ${Math.round(frameGlobal / TAUX / 60)} minutes au total. Téléchargez les parties une par une.`;
     barre.value = 100;
     document.getElementById('chapitres').value = toutesLesLignes.join('\n');
     document.getElementById('chapitresBloc').style.display = 'block';
