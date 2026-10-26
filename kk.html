@@ -1,0 +1,219 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<title>Fusion audio</title>
+<style>
+  body { font-family: Arial, sans-serif; max-width: 800px; margin: 30px auto; padding: 0 20px; color: #1e3a8a; }
+  h2, h3 { color: #1e3a8a; }
+  #zone { border: 2px dashed #2a7ae2; border-radius: 8px; padding: 30px; text-align: center; background: #f0f7ff; }
+  #zone.over { background: #d6eaff; }
+  button { padding: 8px 14px; margin: 4px; cursor: pointer; background: #2a7ae2; color: #fff; border: none; border-radius: 4px; }
+  button:hover { background: #1e5fc0; }
+  button:disabled { background: #9db8dd; cursor: wait; }
+  button.petit { background: #e5edf9; color: #1e3a8a; padding: 4px 8px; }
+  ul { list-style: none; padding: 0; max-height: 300px; overflow-y: auto; border: 1px solid #dbe7f7; border-radius: 6px; }
+  li { padding: 6px 8px; border-bottom: 1px solid #dbe7f7; display: flex; justify-content: space-between; align-items: center; gap: 8px; }
+  #statut { margin: 15px 0; font-weight: bold; }
+  progress { width: 100%; height: 14px; display: none; }
+  textarea { width: 100%; height: 220px; margin-top: 10px; font-family: monospace; box-sizing: border-box; }
+  input[type=file] { display: none; }
+</style>
+</head>
+<body>
+<h2>Fusion de fichiers audio</h2>
+
+<div id="zone">
+  Glissez vos fichiers audio ici (MP3, WAV, M4A, OGG, FLAC, AAC)<br><br>
+  <button id="btnFichiers">Choisir des fichiers</button>
+  <button id="btnDossier">Choisir un dossier</button>
+  <input type="file" id="inputFichiers" multiple accept="audio/*">
+  <input type="file" id="inputDossier" webkitdirectory>
+</div>
+
+<p>Fichiers ajoutés : <span id="nombre">0</span> (ordre : haut vers bas)</p>
+<ul id="liste"></ul>
+<button id="vider" class="petit">Tout effacer</button>
+<br>
+<button id="fusionner">Fusionner en un seul fichier</button>
+
+<progress id="barre" max="100" value="0"></progress>
+<div id="statut"></div>
+
+<div id="chapitresBloc" style="display:none">
+  <h3>Timestamps pour YouTube</h3>
+  <textarea id="chapitres" readonly></textarea>
+  <button id="copier">Copier les timestamps</button>
+</div>
+
+<script>
+const TAUX = 44100;
+const CANAUX = 2;
+let fichiers = [];
+
+const zone = document.getElementById('zone');
+const liste = document.getElementById('liste');
+const statut = document.getElementById('statut');
+const barre = document.getElementById('barre');
+const inputFichiers = document.getElementById('inputFichiers');
+const inputDossier = document.getElementById('inputDossier');
+const boutonFusion = document.getElementById('fusionner');
+const EXT = /\.(mp3|wav|m4a|ogg|flac|aac)$/i;
+
+document.getElementById('btnFichiers').onclick = () => inputFichiers.click();
+document.getElementById('btnDossier').onclick = () => inputDossier.click();
+
+function estAudio(f) { return f.type.startsWith('audio') || EXT.test(f.name); }
+
+function ajouter(liste_fichiers) {
+  const nouveaux = Array.from(liste_fichiers).filter(estAudio);
+  nouveaux.sort((a, b) => a.name.localeCompare(b.name, 'fr', { numeric: true }));
+  fichiers.push(...nouveaux);
+  afficher();
+}
+
+inputFichiers.addEventListener('change', e => { ajouter(e.target.files); e.target.value = ''; });
+inputDossier.addEventListener('change', e => { ajouter(e.target.files); e.target.value = ''; });
+zone.addEventListener('dragover', e => { e.preventDefault(); zone.classList.add('over'); });
+zone.addEventListener('dragleave', () => zone.classList.remove('over'));
+zone.addEventListener('drop', e => { e.preventDefault(); zone.classList.remove('over'); ajouter(e.dataTransfer.files); });
+document.getElementById('vider').onclick = () => { fichiers = []; afficher(); };
+
+function afficher() {
+  liste.innerHTML = '';
+  fichiers.forEach((f, i) => {
+    const li = document.createElement('li');
+    const nom = document.createElement('span');
+    nom.textContent = (i + 1) + '. ' + f.name;
+    const boutons = document.createElement('span');
+
+    const monter = document.createElement('button');
+    monter.className = 'petit'; monter.textContent = '↑';
+    monter.onclick = () => { if (i > 0) { [fichiers[i - 1], fichiers[i]] = [fichiers[i], fichiers[i - 1]]; afficher(); } };
+
+    const descendre = document.createElement('button');
+    descendre.className = 'petit'; descendre.textContent = '↓';
+    descendre.onclick = () => { if (i < fichiers.length - 1) { [fichiers[i + 1], fichiers[i]] = [fichiers[i], fichiers[i + 1]]; afficher(); } };
+
+    const suppr = document.createElement('button');
+    suppr.className = 'petit'; suppr.textContent = '✕';
+    suppr.onclick = () => { fichiers.splice(i, 1); afficher(); };
+
+    boutons.append(monter, descendre, suppr);
+    li.append(nom, boutons);
+    liste.append(li);
+  });
+  document.getElementById('nombre').textContent = fichiers.length;
+}
+
+function formaterTemps(secondes) {
+  const s = Math.floor(secondes);
+  const h = Math.floor(s / 3600);
+  const m = Math.floor((s % 3600) / 60);
+  const sec = String(s % 60).padStart(2, '0');
+  return h > 0
+    ? `${h}:${String(m).padStart(2, '0')}:${sec}`
+    : `${m}:${sec}`;
+}
+
+// En-tête WAV 16 bits stéréo
+function entete(nbFrames) {
+  const longueur = nbFrames * CANAUX * 2;
+  const v = new DataView(new ArrayBuffer(44));
+  const ecrire = (p, t) => { for (let i = 0; i < t.length; i++) v.setUint8(p + i, t.charCodeAt(i)); };
+  ecrire(0, 'RIFF'); v.setUint32(4, 36 + longueur, true); ecrire(8, 'WAVE');
+  ecrire(12, 'fmt '); v.setUint32(16, 16, true); v.setUint16(20, 1, true);
+  v.setUint16(22, CANAUX, true); v.setUint32(24, TAUX, true);
+  v.setUint32(28, TAUX * CANAUX * 2, true); v.setUint16(32, CANAUX * 2, true);
+  v.setUint16(34, 16, true); ecrire(36, 'data'); v.setUint32(40, longueur, true);
+  return v.buffer;
+}
+
+// Convertit un AudioBuffer en PCM 16 bits stéréo
+function versPcm(audio) {
+  const n = audio.length;
+  const g = audio.getChannelData(0);
+  const d = audio.numberOfChannels > 1 ? audio.getChannelData(1) : g;
+  const out = new Int16Array(n * 2);
+  for (let i = 0; i < n; i++) {
+    const l = Math.max(-1, Math.min(1, g[i]));
+    const r = Math.max(-1, Math.min(1, d[i]));
+    out[i * 2] = l < 0 ? l * 0x8000 : l * 0x7FFF;
+    out[i * 2 + 1] = r < 0 ? r * 0x8000 : r * 0x7FFF;
+  }
+  return out;
+}
+
+boutonFusion.addEventListener('click', async () => {
+  if (fichiers.length === 0) { statut.textContent = 'Ajoutez d\'abord des fichiers.'; return; }
+  if (!window.showSaveFilePicker) {
+    statut.textContent = 'Votre navigateur ne gère pas cette fonction. Utilisez Chrome ou Edge.';
+    return;
+  }
+
+  let fichierSortie;
+  try {
+    fichierSortie = await window.showSaveFilePicker({
+      suggestedName: 'musique-fusionnee.wav',
+      types: [{ description: 'Fichier WAV', accept: { 'audio/wav': ['.wav'] } }]
+    });
+  } catch { return; } // l'utilisateur a annulé
+
+  boutonFusion.disabled = true;
+  barre.style.display = 'block';
+  barre.value = 0;
+  document.getElementById('chapitresBloc').style.display = 'none';
+
+  const contexte = new (window.AudioContext || window.webkitAudioContext)({ sampleRate: TAUX });
+  const lignes = [];
+  const flux = await fichierSortie.createWritable();
+
+  try {
+    // 1) Calcul de la durée totale et des timestamps, morceau par morceau
+    //    (on décode un fichier à la fois, on ne garde que sa durée)
+    const durees = [];
+    for (let i = 0; i < fichiers.length; i++) {
+      statut.textContent = `Analyse ${i + 1} / ${fichiers.length}`;
+      const audio = await contexte.decodeAudioData(await fichiers[i].arrayBuffer());
+      durees.push(audio.length);
+      audio.__vide = true;
+    }
+    const total = durees.reduce((a, b) => a + b, 0);
+
+    // 2) En-tête WAV puis écriture directe fichier par fichier
+    await flux.write(entete(total));
+    let decalage = 0;
+    for (let i = 0; i < fichiers.length; i++) {
+      statut.textContent = `Fusion ${i + 1} / ${fichiers.length} : ${fichiers[i].name}`;
+      lignes.push(`${formaterTemps(decalage / TAUX)} ${fichiers[i].name.replace(/\.[^.]+$/, '')}`);
+
+      const audio = await contexte.decodeAudioData(await fichiers[i].arrayBuffer());
+      await flux.write(versPcm(audio));
+      decalage += audio.length;
+      barre.value = Math.round(((i + 1) / fichiers.length) * 100);
+      await new Promise(r => setTimeout(r, 0));
+    }
+
+    await flux.close();
+    document.getElementById('chapitres').value = lignes.join('\n');
+    document.getElementById('chapitresBloc').style.display = 'block';
+    statut.textContent = `Terminé : environ ${Math.round(total / TAUX / 60)} minutes, fichier enregistré.`;
+  } catch (err) {
+    await flux.abort();
+    statut.textContent = 'Erreur : ' + err.message;
+  } finally {
+    boutonFusion.disabled = false;
+    contexte.close();
+  }
+});
+
+document.getElementById('copier').onclick = () => {
+  const t = document.getElementById('chapitres');
+  navigator.clipboard.writeText(t.value).then(
+    () => { statut.textContent = 'Timestamps copiés.'; },
+    () => { t.select(); document.execCommand('copy'); statut.textContent = 'Timestamps copiés.'; }
+  );
+};
+</script>
+</body>
+</html>
