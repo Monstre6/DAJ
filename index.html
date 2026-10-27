@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Fusion audio</title>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/lamejs@1.2.1/lame.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/lamejs/1.2.1/lame.min.js"></script>
 <style>
   body { font-family: Arial, sans-serif; max-width: 800px; margin: 30px auto; padding: 0 20px; color: #1e3a8a; }
   h2, h3 { color: #1e3a8a; }
@@ -19,6 +19,7 @@
   ul { list-style: none; padding: 0; max-height: 300px; overflow-y: auto; border: 1px solid #dbe7f7; border-radius: 6px; }
   li { padding: 6px 8px; border-bottom: 1px solid #dbe7f7; display: flex; justify-content: space-between; align-items: center; gap: 8px; }
   #statut { margin: 15px 0; font-weight: bold; }
+  #avertissement { color: #b45309; margin: 5px 0; }
   progress { width: 100%; height: 14px; display: none; }
   textarea { width: 100%; height: 220px; margin-top: 10px; font-family: monospace; box-sizing: border-box; }
   input[type=file] { display: none; }
@@ -31,10 +32,10 @@
 <h2>Fusion de fichiers audio</h2>
 
 <div id="zone">
-  Glissez vos musiques ou vos fichiers ZIP ici<br><br>
+  Glissez vos fichiers audio (tous formats) ou vos ZIP ici<br><br>
   <button id="btnFichiers">Choisir des fichiers ou un ZIP</button>
   <button id="btnDossier">Choisir un dossier</button>
-  <input type="file" id="inputFichiers" multiple accept="audio/*,.zip">
+  <input type="file" id="inputFichiers" multiple>
   <input type="file" id="inputDossier" webkitdirectory>
 </div>
 
@@ -42,17 +43,19 @@
 <ul id="liste"></ul>
 <button id="vider" class="petit">Tout effacer</button>
 <br>
-<label>Mode :
-  <select id="mode">
-    <option value="parties">Parties téléchargeables (par 10)</option>
-    <option value="complet">Un seul fichier continu</option>
+<label>Format de sortie :
+  <select id="format">
+    <option value="mp3">MP3 (léger, recommandé)</option>
+    <option value="wav">WAV (sans compression, très lourd)</option>
   </select>
 </label>
 <br>
-<button id="fusionner">Lancer la fusion</button>
+<button id="fusionner">Lancer la fusion par parties de 10</button>
+<button id="assembler" style="display:none">Assembler toutes les parties en un fichier</button>
 
 <progress id="barre" max="100" value="0"></progress>
 <div id="statut"></div>
+<div id="avertissement"></div>
 
 <div id="resultats"></div>
 
@@ -64,29 +67,41 @@
 
 <script>
 const TAUX = 44100;
+const CANAUX = 2;
 const KBPS = 128;
 const TAILLE_LOT = 10;
-const EXT = /\.(mp3|wav|m4a|ogg|flac|aac)$/i;
-let morceaux = []; // { nom, lire() } : lire() renvoie un ArrayBuffer
-let urlsActives = [];
+const TAILLE_ENTETE_WAV = 44;
 
-const zone = document.getElementById('zone');
-const liste = document.getElementById('liste');
+let morceaux = [];        // { nom, lire() }
+let parties = [];         // { nom, blob, frames, format }
+let lignesChapitres = [];
+let ignores = [];         // fichiers que le navigateur n'a pas su lire
+let urlsActives = [];
+let ctx = null;
+
 const statut = document.getElementById('statut');
+const avertissement = document.getElementById('avertissement');
 const barre = document.getElementById('barre');
+const liste = document.getElementById('liste');
+const resultats = document.getElementById('resultats');
+const boutonFusion = document.getElementById('fusionner');
+const boutonAssembler = document.getElementById('assembler');
+const selectFormat = document.getElementById('format');
+const zone = document.getElementById('zone');
 const inputFichiers = document.getElementById('inputFichiers');
 const inputDossier = document.getElementById('inputDossier');
-const boutonFusion = document.getElementById('fusionner');
-const resultats = document.getElementById('resultats');
 
 document.getElementById('btnFichiers').onclick = () => inputFichiers.click();
 document.getElementById('btnDossier').onclick = () => inputDossier.click();
 
+const pause = () => new Promise(r => setTimeout(r, 0));
+
 function nomBase(chemin) { return chemin.split('/').pop(); }
 
-function estAudio(nom) {
+// On accepte tout fichier visible ; les formats non lisibles sont signalés à la fusion
+function estFichierValide(nom) {
   const base = nomBase(nom);
-  return EXT.test(base) && !nom.includes('__MACOSX') && !base.startsWith('.');
+  return !nom.includes('__MACOSX') && !base.startsWith('.') && base.length > 0;
 }
 
 function trier(tab) {
@@ -98,7 +113,7 @@ async function lireZip(fichier) {
   const zip = await JSZip.loadAsync(fichier);
   const sortie = [];
   for (const entree of Object.values(zip.files)) {
-    if (entree.dir || !estAudio(entree.name)) continue;
+    if (entree.dir || !estFichierValide(entree.name)) continue;
     sortie.push({ nom: nomBase(entree.name), lire: () => entree.async('arraybuffer') });
   }
   return sortie;
@@ -110,7 +125,7 @@ async function ajouter(liste_fichiers) {
     try {
       if (/\.zip$/i.test(f.name)) {
         sources.push(...await lireZip(f));
-      } else if (f.type.startsWith('audio') || EXT.test(f.name)) {
+      } else if (estFichierValide(f.name)) {
         sources.push({ nom: f.name, lire: () => f.arrayBuffer() });
       }
     } catch (err) {
@@ -120,7 +135,7 @@ async function ajouter(liste_fichiers) {
   trier(sources);
   morceaux.push(...sources);
   afficher();
-  statut.textContent = `${sources.length} morceau(x) ajouté(s).`;
+  statut.textContent = `${sources.length} fichier(s) ajouté(s).`;
 }
 
 inputFichiers.addEventListener('change', async e => { await ajouter(e.target.files); e.target.value = ''; });
@@ -169,12 +184,43 @@ function formaterTemps(secondes) {
   return h > 0 ? `${h}:${String(m).padStart(2, '0')}:${sec}` : `${m}:${sec}`;
 }
 
-async function decoder(contexte, source) {
-  return contexte.decodeAudioData(await source.lire());
+// Décode un fichier ; renvoie null si le navigateur ne sait pas le lire
+async function decoderSur(contexte, source) {
+  try {
+    const buf = await source.lire();
+    return await contexte.decodeAudioData(buf);
+  } catch {
+    return null;
+  }
 }
 
-// Encode un AudioBuffer en MP3 avec l'encodeur continu, bloc par bloc
-async function encoderAudio(enc, audio, sortie) {
+function enteteWav(nbFrames) {
+  const longueur = nbFrames * CANAUX * 2;
+  const v = new DataView(new ArrayBuffer(TAILLE_ENTETE_WAV));
+  const ecrire = (p, t) => { for (let i = 0; i < t.length; i++) v.setUint8(p + i, t.charCodeAt(i)); };
+  ecrire(0, 'RIFF'); v.setUint32(4, 36 + longueur, true); ecrire(8, 'WAVE');
+  ecrire(12, 'fmt '); v.setUint32(16, 16, true); v.setUint16(20, 1, true);
+  v.setUint16(22, CANAUX, true); v.setUint32(24, TAUX, true);
+  v.setUint32(28, TAUX * CANAUX * 2, true); v.setUint16(32, CANAUX * 2, true);
+  v.setUint16(34, 16, true); ecrire(36, 'data'); v.setUint32(40, longueur, true);
+  return v.buffer;
+}
+
+function versPcm(audio) {
+  const n = audio.length;
+  const g = audio.getChannelData(0);
+  const d = audio.numberOfChannels > 1 ? audio.getChannelData(1) : g;
+  const out = new Int16Array(n * 2);
+  for (let i = 0; i < n; i++) {
+    const l = Math.max(-1, Math.min(1, g[i]));
+    const r = Math.max(-1, Math.min(1, d[i]));
+    out[i * 2] = l < 0 ? l * 0x8000 : l * 0x7FFF;
+    out[i * 2 + 1] = r < 0 ? r * 0x8000 : r * 0x7FFF;
+  }
+  return out;
+}
+
+function encoderMp3(enc, audio, sortie) {
   const n = audio.length;
   const g = audio.getChannelData(0);
   const d = audio.numberOfChannels > 1 ? audio.getChannelData(1) : g;
@@ -184,19 +230,47 @@ async function encoderAudio(enc, audio, sortie) {
     L[i] = Math.max(-1, Math.min(1, g[i])) * 32767;
     R[i] = Math.max(-1, Math.min(1, d[i])) * 32767;
   }
-  const BLOC = 1152 * 20;
+  const BLOC = 1152 * 40;
   for (let i = 0; i < n; i += BLOC) {
     const buf = enc.encodeBuffer(L.subarray(i, i + BLOC), R.subarray(i, i + BLOC));
-    if (buf.length) await sortie(buf);
+    if (buf.length) sortie(buf);
   }
 }
 
-function libererUrls() {
-  urlsActives.forEach(u => URL.revokeObjectURL(u));
-  urlsActives = [];
+// Encode une liste de morceaux en une partie. Les fichiers illisibles sont ignorés.
+async function encoderGroupe(indices, debutGlobal, format, onMorceau) {
+  const chunks = [];
+  const enc = format === 'mp3' ? new lamejs.Mp3Encoder(CANAUX, TAUX, KBPS) : null;
+  const sortie = buf => chunks.push(buf);
+  let frames = 0;
+  let suivant = decoderSur(ctx, morceaux[indices[0]]);
+
+  for (let k = 0; k < indices.length; k++) {
+    const audio = await suivant;
+    if (k + 1 < indices.length) suivant = decoderSur(ctx, morceaux[indices[k + 1]]);
+
+    if (!audio) {
+      ignores.push(morceaux[indices[k]].nom);
+      onMorceau(indices[k], null);
+      await pause();
+      continue;
+    }
+
+    onMorceau(indices[k], debutGlobal + frames);
+    if (enc) encoderMp3(enc, audio, sortie);
+    else sortie(versPcm(audio).buffer);
+    frames += audio.length;
+    await pause();
+  }
+
+  if (enc) {
+    const fin = enc.flush();
+    if (fin.length) chunks.push(fin);
+    return { blob: new Blob(chunks, { type: 'audio/mpeg' }), frames };
+  }
+  return { blob: new Blob([enteteWav(frames), ...chunks], { type: 'audio/wav' }), frames };
 }
 
-// Carte avec lecteur et lien de téléchargement
 function ajouterCarte(url, nomFichier, titre) {
   urlsActives.push(url);
   const carte = document.createElement('div');
@@ -215,111 +289,96 @@ function ajouterCarte(url, nomFichier, titre) {
   resultats.appendChild(carte);
 }
 
+// Étape 1 : fusion par parties de 10
 boutonFusion.addEventListener('click', async () => {
   if (morceaux.length === 0) { statut.textContent = 'Ajoutez d\'abord des fichiers ou un ZIP.'; return; }
-  if (typeof lamejs === 'undefined') {
-    statut.textContent = 'Encodeur MP3 non chargé. Vérifiez votre connexion et rechargez la page.';
+  const format = selectFormat.value;
+  if (format === 'mp3' && typeof lamejs === 'undefined') {
+    statut.textContent = 'Encodeur MP3 non chargé. Vérifiez la connexion et rechargez, ou choisissez WAV.';
     return;
   }
 
-  const mode = document.getElementById('mode').value;
-  const surPc = !!window.showSaveFilePicker;
-  let flux = null;
-  let fichierSortie = null;
-
-  // Sur PC en mode fichier complet : écriture directe sur le disque
-  if (mode === 'complet' && surPc) {
-    try {
-      fichierSortie = await window.showSaveFilePicker({
-        suggestedName: 'musique-complete.mp3',
-        types: [{ description: 'Fichier MP3', accept: { 'audio/mpeg': ['.mp3'] } }]
-      });
-      flux = await fichierSortie.createWritable();
-    } catch { return; } // annulé
-  }
-
   boutonFusion.disabled = true;
+  boutonAssembler.style.display = 'none';
   barre.style.display = 'block';
   barre.value = 0;
-  libererUrls();
+  avertissement.textContent = '';
+  parties = [];
+  lignesChapitres = [];
+  ignores = [];
+  urlsActives.forEach(u => URL.revokeObjectURL(u));
+  urlsActives = [];
   resultats.innerHTML = '';
   document.getElementById('chapitresBloc').style.display = 'none';
 
-  const contexte = new (window.AudioContext || window.webkitAudioContext)({ sampleRate: TAUX });
-  const lignes = [];
-  let frameGlobal = 0;
+  ctx = new (window.AudioContext || window.webkitAudioContext)({ sampleRate: TAUX });
   const total = morceaux.length;
+  const nbLots = Math.ceil(total / TAILLE_LOT);
+  let frameGlobal = 0;
+  let traites = 0;
 
   try {
-    if (mode === 'complet') {
-      const enc = new lamejs.Mp3Encoder(2, TAUX, KBPS);
-      const chunks = [];
-      const sortie = async buf => { if (flux) await flux.write(buf); else chunks.push(buf); };
+    for (let lot = 0; lot < nbLots; lot++) {
+      const indices = [];
+      for (let i = lot * TAILLE_LOT; i < Math.min((lot + 1) * TAILLE_LOT, total); i++) indices.push(i);
+      statut.textContent = `Partie ${lot + 1} / ${nbLots}...`;
 
-      for (let i = 0; i < total; i++) {
-        statut.textContent = `Encodage ${i + 1} / ${total} : ${morceaux[i].nom}`;
-        const audio = await decoder(contexte, morceaux[i]);
-        lignes.push(`${formaterTemps(frameGlobal / TAUX)} ${morceaux[i].nom.replace(/\.[^.]+$/, '')}`);
-        await encoderAudio(enc, audio, sortie);
-        frameGlobal += audio.length;
-        barre.value = Math.round(((i + 1) / total) * 100);
-        await new Promise(r => setTimeout(r, 0));
-      }
-      const fin = enc.flush();
-      if (fin.length) await sortie(fin);
-
-      const minutes = Math.round(frameGlobal / TAUX / 60);
-      if (flux) {
-        await flux.close();
-        const fichier = await fichierSortie.getFile();
-        ajouterCarte(URL.createObjectURL(fichier), 'musique-complete.mp3', `Fichier complet enregistré (${minutes} min)`);
-      } else {
-        const blob = new Blob(chunks, { type: 'audio/mpeg' });
-        ajouterCarte(URL.createObjectURL(blob), 'musique-complete.mp3', `Fichier complet prêt (${minutes} min)`);
-      }
-    } else {
-      // Mode parties : un MP3 par lot de 10
-      const nbLots = Math.ceil(total / TAILLE_LOT);
-      for (let lot = 0; lot < nbLots; lot++) {
-        const enc = new lamejs.Mp3Encoder(2, TAUX, KBPS);
-        const chunks = [];
-        const sortie = async buf => { chunks.push(buf); };
-        const debut = lot * TAILLE_LOT;
-        const groupe = morceaux.slice(debut, debut + TAILLE_LOT);
-        let framesLot = 0;
-
-        for (let k = 0; k < groupe.length; k++) {
-          const numero = debut + k + 1;
-          statut.textContent = `Partie ${lot + 1}/${nbLots} : morceau ${numero}/${total} (${groupe[k].nom})`;
-          const audio = await decoder(contexte, groupe[k]);
-          lignes.push(`${formaterTemps(frameGlobal / TAUX)} ${groupe[k].nom.replace(/\.[^.]+$/, '')}`);
-          await encoderAudio(enc, audio, sortie);
-          framesLot += audio.length;
-          frameGlobal += audio.length;
-          barre.value = Math.round((numero / total) * 100);
-          await new Promise(r => setTimeout(r, 0));
+      const debutLot = frameGlobal;
+      const { blob, frames } = await encoderGroupe(indices, debutLot, format, (index, debut) => {
+        if (debut !== null) {
+          lignesChapitres[index] = `${formaterTemps(debut / TAUX)} ${morceaux[index].nom.replace(/\.[^.]+$/, '')}`;
         }
-        const fin = enc.flush();
-        if (fin.length) chunks.push(fin);
+        traites++;
+        barre.value = Math.round((traites / total) * 100);
+      });
 
-        const blob = new Blob(chunks, { type: 'audio/mpeg' });
-        const nomFichier = `partie-${String(lot + 1).padStart(2, '0')}.mp3`;
-        ajouterCarte(URL.createObjectURL(blob), nomFichier,
-          `Partie ${lot + 1} / ${nbLots} (${Math.round(framesLot / TAUX / 60)} min)`);
-      }
+      frameGlobal += frames;
+      const extension = format === 'mp3' ? 'mp3' : 'wav';
+      const nom = `partie-${String(lot + 1).padStart(2, '0')}.${extension}`;
+      parties.push({ nom, blob, frames, format });
+      ajouterCarte(URL.createObjectURL(blob), nom,
+        `Partie ${lot + 1} / ${nbLots} (${Math.round(frames / TAUX / 60)} min)`);
     }
 
-    statut.textContent = `Terminé : environ ${Math.round(frameGlobal / TAUX / 60)} minutes au total.`;
+    statut.textContent = `${nbLots} partie(s) prête(s), environ ${Math.round(frameGlobal / TAUX / 60)} minutes au total.`;
     barre.value = 100;
-    document.getElementById('chapitres').value = lignes.join('\n');
+    if (ignores.length) {
+      avertissement.textContent = `Fichiers ignorés (format non lisible par le navigateur) : ${ignores.join(', ')}. Convertissez-les en MP3 ou WAV pour les inclure.`;
+    }
+    document.getElementById('chapitres').value = lignesChapitres.filter(Boolean).join('\n');
     document.getElementById('chapitresBloc').style.display = 'block';
+    boutonAssembler.style.display = 'inline-block';
   } catch (err) {
-    if (flux) { try { await flux.abort(); } catch {} }
-    statut.textContent = 'Erreur : ' + err.message + ' (essayez le mode parties ou moins de morceaux)';
+    statut.textContent = 'Erreur : ' + err.message + ' (essayez moins de morceaux à la fois)';
   } finally {
     boutonFusion.disabled = false;
-    contexte.close();
+    ctx.close();
   }
+});
+
+// Étape 2 : assemblage de toutes les parties en un seul fichier
+boutonAssembler.addEventListener('click', () => {
+  if (parties.length === 0) return;
+  const format = parties[0].format;
+  const totalFrames = parties.reduce((a, p) => a + p.frames, 0);
+  const minutes = Math.round(totalFrames / TAUX / 60);
+  let blob;
+  let nom;
+
+  if (format === 'mp3') {
+    blob = new Blob(parties.map(p => p.blob), { type: 'audio/mpeg' });
+    nom = 'musique-complete.mp3';
+  } else {
+    const donnees = parties.map(p => p.blob.slice(TAILLE_ENTETE_WAV));
+    blob = new Blob([enteteWav(totalFrames), ...donnees], { type: 'audio/wav' });
+    nom = 'musique-complete.wav';
+  }
+
+  const url = URL.createObjectURL(blob);
+  urlsActives.push(url);
+  ajouterCarte(url, nom, `Fichier complet assemblé (environ ${minutes} min, ${parties.length} parties)`);
+  statut.textContent = 'Fichier complet prêt : écoutez-le ou téléchargez-le.';
+  resultats.lastElementChild.scrollIntoView({ behavior: 'smooth' });
 });
 
 document.getElementById('copier').onclick = () => {
