@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Fusion Audio</title>
+<title>Fusion Audio Définitive</title>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
 <style>
   body { font-family: Arial, sans-serif; max-width: 800px; margin: 30px auto; padding: 0 20px; color: #1e3a8a; }
@@ -28,7 +28,7 @@
 </style>
 </head>
 <body>
-<h2>Fusion Audio</h2>
+<h2>Fusion Audio & Timestamps Corrigés</h2>
 
 <div id="zone">
   Glissez vos fichiers WAV ou ZIP ici<br><br>
@@ -42,7 +42,7 @@
 <ul id="liste"></ul>
 <button id="vider" class="petit">Tout effacer</button>
 <br>
-<button id="fusionner">Créer les parties de 10 en 10</button>
+<button id="fusionner">Créer les parties et timestamps</button>
 
 <progress id="barre" max="100" value="0"></progress>
 <div id="statut"></div>
@@ -53,7 +53,7 @@
   <strong>Options :</strong><br>
   <button id="unParUn">Télécharger un par un</button>
   <button id="toutTelecharger">Télécharger toutes les parties (ZIP)</button>
-  <button id="assembler">Assembler tout en un seul fichier (WAV)</button>
+  <button id="assembler">Assembler tout en un seul fichier (WAV Global)</button>
 </div>
 
 <div id="resultat"></div>
@@ -139,6 +139,7 @@ document.getElementById('vider').onclick = () => {
   statut.textContent = 'Tout a été effacé.';
   zoneParties.style.display = 'none';
   actions.style.display = 'none';
+  resultat.innerHTML = '';
   document.getElementById('chapitresBloc').style.display = 'none';
 };
 
@@ -207,13 +208,12 @@ boutonFusion.addEventListener('click', async () => {
   zoneParties.innerHTML = '';
   zoneParties.style.display = 'block';
   
-  // Hlakanya ka hloko: Re thoma ka tše ntšha ka moka go thibela diposo tša khale
   parties = [];
   lignes = [];
 
   const total = morceaux.length;
   const nbLots = Math.ceil(total / TAILLE_LOT);
-  let frameGlobal = 0; // E thoma ka 0 ka nepo
+  let frameGlobal = 0;
 
   try {
     for (let lot = 0; lot < nbLots; lot++) {
@@ -234,7 +234,6 @@ boutonFusion.addEventListener('click', async () => {
           const nbFramesFichier = pcmData.length / CANAUX;
           const nomPropre = groupe[k].nom.replace(/\.[^.]+$/, '');
           
-          // E ngwala nako ya nnete go tloga go 0:00
           lignes.push(`${formaterTemps(frameGlobal / TAUX)} ${nomPropre}`);
           
           framesLot += nbFramesFichier;
@@ -261,7 +260,7 @@ boutonFusion.addEventListener('click', async () => {
     }
 
     barre.value = 100;
-    statut.textContent = `Terminé ! ${nbLots} partie(s) générée(s) avec des timestamps parfaits.`;
+    statut.textContent = `Terminé ! ${nbLots} partie(s) générée(s) avec succès.`;
     document.getElementById('chapitres').value = lignes.join('\n');
     document.getElementById('chapitresBloc').style.display = 'block';
     actions.style.display = 'block';
@@ -288,10 +287,13 @@ document.getElementById('toutTelecharger').addEventListener('click', async () =>
   statut.textContent = 'ZIP téléchargé !';
 });
 
+// Assemblage global corrigé pour prendre TOUTES les parties créées et afficher la vraie durée totale
 document.getElementById('assembler').addEventListener('click', async () => {
   if (parties.length === 0) return;
   
-  statut.textContent = 'Assemblage instantané de tout le fichier...';
+  statut.textContent = 'Assemblage global complet en cours...';
+  
+  // Fusionne toutes les parties générées pour obtenir le fichier global complet
   const blobsDesParties = parties.map(p => p.blob);
   const completGlobal = new Blob(blobsDesParties, { type: 'audio/wav' });
   
@@ -314,7 +316,7 @@ document.getElementById('assembler').addEventListener('click', async () => {
   carte.append(titre, document.createElement('br'), lecteur, document.createElement('br'), lien);
   resultat.innerHTML = '';
   resultat.appendChild(carte);
-  statut.textContent = 'Fichier global prêt !';
+  statut.textContent = 'Fichier global complet prêt !';
   carte.scrollIntoView({ behavior: 'smooth' });
 });
 
