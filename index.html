@@ -4,6 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Fusion audio rapide</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
 <style>
   body { font-family: Arial, sans-serif; max-width: 800px; margin: 30px auto; padding: 0 20px; color: #1e3a8a; }
   h2, h3 { color: #1e3a8a; }
@@ -20,28 +21,33 @@
   progress { width: 100%; height: 14px; display: none; }
   textarea { width: 100%; height: 220px; margin-top: 10px; font-family: monospace; box-sizing: border-box; }
   input[type=file] { display: none; }
+  #resultats { margin-top: 15px; }
+  .carte { border: 1px solid #dbe7f7; border-radius: 6px; padding: 10px; margin: 10px 0; }
+  .carte audio { width: 100%; margin: 6px 0; }
 </style>
 </head>
 <body>
-<h2>Fusion audio rapide (PC, Chrome ou Edge)</h2>
+<h2>Fusion audio rapide</h2>
 
 <div id="zone">
-  Glissez vos fichiers audio ici (WAV, MP3, etc.)<br><br>
-  <button id="btnFichiers">Choisir des fichiers</button>
+  Glissez vos fichiers audio ou vos ZIP ici<br><br>
+  <button id="btnFichiers">Choisir des fichiers ou un ZIP</button>
   <button id="btnDossier">Choisir un dossier</button>
-  <input type="file" id="inputFichiers" multiple accept="audio/*">
+  <input type="file" id="inputFichiers" multiple accept="audio/*,.zip">
   <input type="file" id="inputDossier" webkitdirectory>
 </div>
 
-<p>Fichiers ajoutés : <span id="nombre">0</span> (ordre : haut vers bas)</p>
+<p>Morceaux ajoutés : <span id="nombre">0</span> (ordre : haut vers bas)</p>
 <ul id="liste"></ul>
 <button id="vider" class="petit">Tout effacer</button>
 <br>
-<button id="fusionner">Créer le fichier complet (AAC)</button>
+<button id="fusionner">Créer le fichier complet (AAC 192 kbps)</button>
 
 <progress id="barre" max="100" value="0"></progress>
 <div id="statut"></div>
 <div id="avertissement"></div>
+
+<div id="resultats"></div>
 
 <div id="chapitresBloc" style="display:none">
   <h3>Timestamps pour YouTube</h3>
@@ -53,21 +59,25 @@
 const TAUX = 48000;
 const CANAUX = 2;
 const TAILLE_BLOC = 4096;
+const LIMITE_MOBILE_MO = 800;
 const CONFIG = {
   codec: 'mp4a.40.2',
   sampleRate: TAUX,
   numberOfChannels: CANAUX,
-  bitrate: 128000,
+  bitrate: 192000,
   aac: { format: 'adts' }
 };
+const EXT = /\.(mp3|wav|m4a|ogg|flac|aac|wma|webm)$/i;
 
-let morceaux = []; // { nom, lire() }
+let morceaux = []; // { nom, lire() } : lire() renvoie un ArrayBuffer
+let urlsActives = [];
 
 const zone = document.getElementById('zone');
 const liste = document.getElementById('liste');
 const statut = document.getElementById('statut');
 const barre = document.getElementById('barre');
 const avertissement = document.getElementById('avertissement');
+const resultats = document.getElementById('resultats');
 const boutonFusion = document.getElementById('fusionner');
 const inputFichiers = document.getElementById('inputFichiers');
 const inputDossier = document.getElementById('inputDossier');
@@ -84,24 +94,49 @@ function estValide(nom) {
   return base.length > 0 && !base.startsWith('.') && !nom.includes('__MACOSX');
 }
 
-function ajouter(liste_fichiers) {
-  const nouveaux = Array.from(liste_fichiers)
-    .filter(f => estValide(f.name))
-    .map(f => ({ nom: f.name, lire: () => f.arrayBuffer() }));
-  nouveaux.sort((a, b) => a.nom.localeCompare(b.nom, 'fr', { numeric: true }));
-  morceaux.push(...nouveaux);
-  afficher();
-  statut.textContent = `${nouveaux.length} fichier(s) ajouté(s).`;
+function trier(tab) {
+  tab.sort((a, b) => a.nom.localeCompare(b.nom, 'fr', { numeric: true }));
 }
 
-inputFichiers.addEventListener('change', e => { ajouter(e.target.files); e.target.value = ''; });
-inputDossier.addEventListener('change', e => { ajouter(e.target.files); e.target.value = ''; });
+async function lireZip(fichier) {
+  statut.textContent = `Lecture du ZIP : ${fichier.name}...`;
+  const zip = await JSZip.loadAsync(fichier);
+  const sortie = [];
+  for (const entree of Object.values(zip.files)) {
+    if (entree.dir || !estValide(entree.name)) continue;
+    if (!EXT.test(entree.name) && !/\.(mp3|wav)$/i.test(entree.name)) continue;
+    sortie.push({ nom: nomBase(entree.name), lire: () => entree.async('arraybuffer') });
+  }
+  return sortie;
+}
+
+async function ajouter(liste_fichiers) {
+  const sources = [];
+  for (const f of Array.from(liste_fichiers)) {
+    try {
+      if (/\.zip$/i.test(f.name)) {
+        sources.push(...await lireZip(f));
+      } else if (estValide(f.name)) {
+        sources.push({ nom: f.name, lire: () => f.arrayBuffer() });
+      }
+    } catch (err) {
+      statut.textContent = `Impossible de lire ${f.name} : ${err.message}`;
+    }
+  }
+  trier(sources);
+  morceaux.push(...sources);
+  afficher();
+  statut.textContent = `${sources.length} morceau(x) ajouté(s).`;
+}
+
+inputFichiers.addEventListener('change', async e => { await ajouter(e.target.files); e.target.value = ''; });
+inputDossier.addEventListener('change', async e => { await ajouter(e.target.files); e.target.value = ''; });
 zone.addEventListener('dragover', e => { e.preventDefault(); zone.classList.add('over'); });
 zone.addEventListener('dragleave', () => zone.classList.remove('over'));
-zone.addEventListener('drop', e => {
+zone.addEventListener('drop', async e => {
   e.preventDefault();
   zone.classList.remove('over');
-  ajouter(e.dataTransfer.files);
+  await ajouter(e.dataTransfer.files);
 });
 document.getElementById('vider').onclick = () => { morceaux = []; afficher(); };
 
@@ -140,10 +175,37 @@ function formaterTemps(secondes) {
   return h > 0 ? `${h}:${String(m).padStart(2, '0')}:${sec}` : `${m}:${sec}`;
 }
 
+// Décode un morceau ; renvoie null s'il est illisible
+async function decoderSur(ctx, source) {
+  try {
+    return await ctx.decodeAudioData(await source.lire());
+  } catch {
+    return null;
+  }
+}
+
+function ajouterCarte(url, nomFichier, titre) {
+  urlsActives.push(url);
+  const carte = document.createElement('div');
+  carte.className = 'carte';
+  const t = document.createElement('strong');
+  t.textContent = titre;
+  const audio = document.createElement('audio');
+  audio.controls = true;
+  audio.preload = 'metadata';
+  audio.src = url;
+  const lien = document.createElement('a');
+  lien.href = url;
+  lien.download = nomFichier;
+  lien.textContent = 'Télécharger ' + nomFichier;
+  carte.append(t, audio, document.createElement('br'), lien);
+  resultats.appendChild(carte);
+}
+
 boutonFusion.addEventListener('click', async () => {
-  if (morceaux.length === 0) { statut.textContent = 'Ajoutez d\'abord des fichiers.'; return; }
-  if (!window.AudioEncoder || !window.showSaveFilePicker) {
-    statut.textContent = 'Utilisez Chrome ou Edge à jour sur ordinateur.';
+  if (morceaux.length === 0) { statut.textContent = 'Ajoutez d\'abord des fichiers ou un ZIP.'; return; }
+  if (!window.AudioEncoder) {
+    statut.textContent = 'Encodage AAC non disponible : utilisez Chrome ou Edge à jour.';
     return;
   }
   const support = await AudioEncoder.isConfigSupported(CONFIG).catch(() => ({ supported: false }));
@@ -152,28 +214,40 @@ boutonFusion.addEventListener('click', async () => {
     return;
   }
 
-  let flux;
-  try {
-    const handle = await window.showSaveFilePicker({
-      suggestedName: 'musique-complete.aac',
-      types: [{ description: 'Audio AAC', accept: { 'audio/aac': ['.aac'] } }]
-    });
-    flux = await handle.createWritable();
-  } catch { return; } // annulé
+  const surPc = !!window.showSaveFilePicker;
+  let flux = null;
+  let ecritures = Promise.resolve();
+  const chunksMemoire = []; // utilisé seulement sur téléphone
+
+  if (surPc) {
+    try {
+      const handle = await window.showSaveFilePicker({
+        suggestedName: 'musique-complete.aac',
+        types: [{ description: 'Audio AAC', accept: { 'audio/aac': ['.aac'] } }]
+      });
+      flux = await handle.createWritable();
+    } catch { return; } // annulé
+  }
 
   boutonFusion.disabled = true;
   barre.style.display = 'block';
   barre.value = 0;
   avertissement.textContent = '';
+  resultats.innerHTML = '';
+  urlsActives.forEach(u => URL.revokeObjectURL(u));
+  urlsActives = [];
   document.getElementById('chapitresBloc').style.display = 'none';
 
   let erreurEncodeur = null;
-  let ecritures = Promise.resolve();
   const encoder = new AudioEncoder({
     output: chunk => {
       const buf = new Uint8Array(chunk.byteLength);
       chunk.copyTo(buf);
-      ecritures = ecritures.then(() => flux.write(buf));
+      if (flux) {
+        ecritures = ecritures.then(() => flux.write(buf));
+      } else {
+        chunksMemoire.push(buf);
+      }
     },
     error: e => { erreurEncodeur = e; }
   });
@@ -182,17 +256,22 @@ boutonFusion.addEventListener('click', async () => {
   const ctx = new (window.AudioContext || window.webkitAudioContext)({ sampleRate: TAUX });
   const lignes = [];
   const ignores = [];
+  const total = morceaux.length;
   let frames = 0;
+  let tailleOctets = 0;
+
+  // Décodage en avance : le morceau suivant se décode pendant l'encodage du courant
+  let suivant = decoderSur(ctx, morceaux[0]);
 
   try {
-    for (let i = 0; i < morceaux.length; i++) {
-      statut.textContent = `Fichier ${i + 1} / ${morceaux.length} : ${morceaux[i].nom}`;
-      barre.value = Math.round((i / morceaux.length) * 100);
+    for (let i = 0; i < total; i++) {
+      statut.textContent = `Fichier ${i + 1} / ${total} : ${morceaux[i].nom}`;
+      barre.value = Math.round((i / total) * 100);
 
-      let audio;
-      try {
-        audio = await ctx.decodeAudioData(await morceaux[i].lire());
-      } catch {
+      const audio = await suivant;
+      if (i + 1 < total) suivant = decoderSur(ctx, morceaux[i + 1]);
+
+      if (!audio) {
         ignores.push(morceaux[i].nom);
         continue;
       }
@@ -227,18 +306,34 @@ boutonFusion.addEventListener('click', async () => {
 
     await encoder.flush();
     if (erreurEncodeur) throw erreurEncodeur;
-    await ecritures;
-    await flux.close();
+
+    const minutes = Math.round(frames / TAUX / 60);
+    if (flux) {
+      await ecritures;
+      await flux.close();
+      const fichier = await (await window.showSaveFilePicker.lastHandle?.getFile?.() ?? null);
+      statut.textContent = `Terminé : environ ${minutes} minutes, fichier enregistré sur votre PC.`;
+    } else {
+      tailleOctets = chunksMemoire.reduce((a, c) => a + c.length, 0);
+      const mo = Math.round(tailleOctets / 1048576);
+      if (mo > LIMITE_MOBILE_MO) {
+        avertissement.textContent = `Attention : fichier de ${mo} Mo, le téléphone risque de ne pas le gérer. Utilisez un PC pour les longues durées.`;
+      }
+      const blob = new Blob(chunksMemoire, { type: 'audio/aac' });
+      ajouterCarte(URL.createObjectURL(blob), 'musique-complete.aac',
+        `Fichier complet prêt (${minutes} min, ${mo} Mo)`);
+      statut.textContent = `Terminé : environ ${minutes} minutes.`;
+    }
 
     barre.value = 100;
-    statut.textContent = `Terminé : environ ${Math.round(frames / TAUX / 60)} minutes, fichier enregistré.`;
     if (ignores.length) {
-      avertissement.textContent = `Fichiers ignorés (non lisibles) : ${ignores.join(', ')}`;
+      avertissement.textContent += (avertissement.textContent ? ' ' : '') +
+        `Fichiers ignorés (non lisibles) : ${ignores.join(', ')}`;
     }
     document.getElementById('chapitres').value = lignes.join('\n');
     document.getElementById('chapitresBloc').style.display = 'block';
   } catch (err) {
-    try { await flux.abort(); } catch {}
+    if (flux) { try { await flux.abort(); } catch {} }
     statut.textContent = 'Erreur : ' + (err.message || err);
   } finally {
     encoder.close();
