@@ -5,12 +5,14 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Fusion audio</title>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/lamejs@1.2.1/lame.min.js"></script>
 <style>
   body { font-family: Arial, sans-serif; max-width: 800px; margin: 30px auto; padding: 0 20px; color: #1e3a8a; }
   h2, h3 { color: #1e3a8a; }
   #zone { border: 2px dashed #2a7ae2; border-radius: 8px; padding: 30px; text-align: center; background: #f0f7ff; }
   #zone.over { background: #d6eaff; }
-  button { padding: 8px 14px; margin: 4px; cursor: pointer; background: #2a7ae2; color: #fff; border: none; border-radius: 4px; }
+  button, select { padding: 8px 14px; margin: 4px; border-radius: 4px; }
+  button { cursor: pointer; background: #2a7ae2; color: #fff; border: none; }
   button:hover { background: #1e5fc0; }
   button:disabled { background: #9db8dd; cursor: wait; }
   button.petit { background: #e5edf9; color: #1e3a8a; padding: 4px 8px; }
@@ -20,8 +22,9 @@
   progress { width: 100%; height: 14px; display: none; }
   textarea { width: 100%; height: 220px; margin-top: 10px; font-family: monospace; box-sizing: border-box; }
   input[type=file] { display: none; }
-  #resultat { display: none; margin-top: 15px; border: 1px solid #dbe7f7; border-radius: 6px; padding: 10px; }
-  #resultat audio { width: 100%; margin: 8px 0; }
+  #resultats { margin-top: 15px; }
+  .carte { border: 1px solid #dbe7f7; border-radius: 6px; padding: 10px; margin: 10px 0; }
+  .carte audio { width: 100%; margin: 6px 0; }
 </style>
 </head>
 <body>
@@ -39,16 +42,19 @@
 <ul id="liste"></ul>
 <button id="vider" class="petit">Tout effacer</button>
 <br>
-<button id="fusionner">Créer le fichier complet</button>
+<label>Mode :
+  <select id="mode">
+    <option value="parties">Parties téléchargeables (par 10)</option>
+    <option value="complet">Un seul fichier continu</option>
+  </select>
+</label>
+<br>
+<button id="fusionner">Lancer la fusion</button>
 
 <progress id="barre" max="100" value="0"></progress>
 <div id="statut"></div>
 
-<div id="resultat">
-  <strong id="titreResultat"></strong>
-  <audio id="lecteur" controls preload="metadata"></audio>
-  <a id="telecharger" style="display:none">Télécharger le fichier complet</a>
-</div>
+<div id="resultats"></div>
 
 <div id="chapitresBloc" style="display:none">
   <h3>Timestamps pour YouTube</h3>
@@ -58,11 +64,11 @@
 
 <script>
 const TAUX = 44100;
-const CANAUX = 2;
-const LIMITE_MOBILE_MO = 800; // au-delà, la version téléphone risque de planter
+const KBPS = 128;
+const TAILLE_LOT = 10;
 const EXT = /\.(mp3|wav|m4a|ogg|flac|aac)$/i;
 let morceaux = []; // { nom, lire() } : lire() renvoie un ArrayBuffer
-let urlActive = null;
+let urlsActives = [];
 
 const zone = document.getElementById('zone');
 const liste = document.getElementById('liste');
@@ -71,9 +77,7 @@ const barre = document.getElementById('barre');
 const inputFichiers = document.getElementById('inputFichiers');
 const inputDossier = document.getElementById('inputDossier');
 const boutonFusion = document.getElementById('fusionner');
-const resultat = document.getElementById('resultat');
-const lecteur = document.getElementById('lecteur');
-const lienTelecharger = document.getElementById('telecharger');
+const resultats = document.getElementById('resultats');
 
 document.getElementById('btnFichiers').onclick = () => inputFichiers.click();
 document.getElementById('btnDossier').onclick = () => inputDossier.click();
@@ -165,63 +169,70 @@ function formaterTemps(secondes) {
   return h > 0 ? `${h}:${String(m).padStart(2, '0')}:${sec}` : `${m}:${sec}`;
 }
 
-// En-tête WAV pour un nombre total d'échantillons donné
-function entete(nbFrames) {
-  const longueur = nbFrames * CANAUX * 2;
-  const v = new DataView(new ArrayBuffer(44));
-  const ecrire = (p, t) => { for (let i = 0; i < t.length; i++) v.setUint8(p + i, t.charCodeAt(i)); };
-  ecrire(0, 'RIFF'); v.setUint32(4, 36 + longueur, true); ecrire(8, 'WAVE');
-  ecrire(12, 'fmt '); v.setUint32(16, 16, true); v.setUint16(20, 1, true);
-  v.setUint16(22, CANAUX, true); v.setUint32(24, TAUX, true);
-  v.setUint32(28, TAUX * CANAUX * 2, true); v.setUint16(32, CANAUX * 2, true);
-  v.setUint16(34, 16, true); ecrire(36, 'data'); v.setUint32(40, longueur, true);
-  return v.buffer;
-}
-
-// AudioBuffer -> PCM 16 bits stéréo
-function versPcm(audio) {
-  const n = audio.length;
-  const g = audio.getChannelData(0);
-  const d = audio.numberOfChannels > 1 ? audio.getChannelData(1) : g;
-  const out = new Int16Array(n * 2);
-  for (let i = 0; i < n; i++) {
-    const l = Math.max(-1, Math.min(1, g[i]));
-    const r = Math.max(-1, Math.min(1, d[i]));
-    out[i * 2] = l < 0 ? l * 0x8000 : l * 0x7FFF;
-    out[i * 2 + 1] = r < 0 ? r * 0x8000 : r * 0x7FFF;
-  }
-  return out;
-}
-
 async function decoder(contexte, source) {
   return contexte.decodeAudioData(await source.lire());
 }
 
-// Affiche le fichier complet : lecture dans la page et lien de téléchargement
-function afficherResultat(url, nomFichier, titre) {
-  if (urlActive) URL.revokeObjectURL(urlActive);
-  urlActive = url;
-  lecteur.src = url;
-  lienTelecharger.href = url;
-  lienTelecharger.download = nomFichier;
-  lienTelecharger.style.display = 'inline-block';
-  lienTelecharger.textContent = 'Télécharger ' + nomFichier;
-  document.getElementById('titreResultat').textContent = titre;
-  resultat.style.display = 'block';
+// Encode un AudioBuffer en MP3 avec l'encodeur continu, bloc par bloc
+async function encoderAudio(enc, audio, sortie) {
+  const n = audio.length;
+  const g = audio.getChannelData(0);
+  const d = audio.numberOfChannels > 1 ? audio.getChannelData(1) : g;
+  const L = new Int16Array(n);
+  const R = new Int16Array(n);
+  for (let i = 0; i < n; i++) {
+    L[i] = Math.max(-1, Math.min(1, g[i])) * 32767;
+    R[i] = Math.max(-1, Math.min(1, d[i])) * 32767;
+  }
+  const BLOC = 1152 * 20;
+  for (let i = 0; i < n; i += BLOC) {
+    const buf = enc.encodeBuffer(L.subarray(i, i + BLOC), R.subarray(i, i + BLOC));
+    if (buf.length) await sortie(buf);
+  }
+}
+
+function libererUrls() {
+  urlsActives.forEach(u => URL.revokeObjectURL(u));
+  urlsActives = [];
+}
+
+// Carte avec lecteur et lien de téléchargement
+function ajouterCarte(url, nomFichier, titre) {
+  urlsActives.push(url);
+  const carte = document.createElement('div');
+  carte.className = 'carte';
+  const t = document.createElement('strong');
+  t.textContent = titre;
+  const audio = document.createElement('audio');
+  audio.controls = true;
+  audio.preload = 'metadata';
+  audio.src = url;
+  const lien = document.createElement('a');
+  lien.href = url;
+  lien.download = nomFichier;
+  lien.textContent = 'Télécharger ' + nomFichier;
+  carte.append(t, audio, document.createElement('br'), lien);
+  resultats.appendChild(carte);
 }
 
 boutonFusion.addEventListener('click', async () => {
   if (morceaux.length === 0) { statut.textContent = 'Ajoutez d\'abord des fichiers ou un ZIP.'; return; }
+  if (typeof lamejs === 'undefined') {
+    statut.textContent = 'Encodeur MP3 non chargé. Vérifiez votre connexion et rechargez la page.';
+    return;
+  }
 
+  const mode = document.getElementById('mode').value;
   const surPc = !!window.showSaveFilePicker;
   let flux = null;
   let fichierSortie = null;
 
-  if (surPc) {
+  // Sur PC en mode fichier complet : écriture directe sur le disque
+  if (mode === 'complet' && surPc) {
     try {
       fichierSortie = await window.showSaveFilePicker({
-        suggestedName: 'musique-complete.wav',
-        types: [{ description: 'Fichier WAV', accept: { 'audio/wav': ['.wav'] } }]
+        suggestedName: 'musique-complete.mp3',
+        types: [{ description: 'Fichier MP3', accept: { 'audio/mpeg': ['.mp3'] } }]
       });
       flux = await fichierSortie.createWritable();
     } catch { return; } // annulé
@@ -230,75 +241,81 @@ boutonFusion.addEventListener('click', async () => {
   boutonFusion.disabled = true;
   barre.style.display = 'block';
   barre.value = 0;
-  resultat.style.display = 'none';
+  libererUrls();
+  resultats.innerHTML = '';
   document.getElementById('chapitresBloc').style.display = 'none';
 
   const contexte = new (window.AudioContext || window.webkitAudioContext)({ sampleRate: TAUX });
   const lignes = [];
+  let frameGlobal = 0;
+  const total = morceaux.length;
 
   try {
-    // Passe 1 : durée totale et timestamps
-    const durees = [];
-    for (let i = 0; i < morceaux.length; i++) {
-      statut.textContent = `Analyse ${i + 1} / ${morceaux.length}`;
-      const audio = await decoder(contexte, morceaux[i]);
-      durees.push(audio.length);
-      barre.value = Math.round(((i + 1) / morceaux.length) * 40);
-      await new Promise(r => setTimeout(r, 0));
-    }
-    const total = durees.reduce((a, b) => a + b, 0);
+    if (mode === 'complet') {
+      const enc = new lamejs.Mp3Encoder(2, TAUX, KBPS);
+      const chunks = [];
+      const sortie = async buf => { if (flux) await flux.write(buf); else chunks.push(buf); };
 
-    if (surPc) {
-      // PC : écriture directe sur le disque, morceau par morceau
-      await flux.write(entete(total));
-      let decalage = 0;
-      for (let i = 0; i < morceaux.length; i++) {
-        statut.textContent = `Fusion ${i + 1} / ${morceaux.length} : ${morceaux[i].nom}`;
-        lignes.push(`${formaterTemps(decalage / TAUX)} ${morceaux[i].nom.replace(/\.[^.]+$/, '')}`);
+      for (let i = 0; i < total; i++) {
+        statut.textContent = `Encodage ${i + 1} / ${total} : ${morceaux[i].nom}`;
         const audio = await decoder(contexte, morceaux[i]);
-        await flux.write(versPcm(audio));
-        decalage += audio.length;
-        barre.value = 40 + Math.round(((i + 1) / morceaux.length) * 60);
+        lignes.push(`${formaterTemps(frameGlobal / TAUX)} ${morceaux[i].nom.replace(/\.[^.]+$/, '')}`);
+        await encoderAudio(enc, audio, sortie);
+        frameGlobal += audio.length;
+        barre.value = Math.round(((i + 1) / total) * 100);
         await new Promise(r => setTimeout(r, 0));
       }
-      await flux.close();
-      const fichier = await fichierSortie.getFile();
-      afficherResultat(URL.createObjectURL(fichier), 'musique-complete.wav',
-        `Fichier complet enregistré (${Math.round(total / TAUX / 60)} min)`);
+      const fin = enc.flush();
+      if (fin.length) await sortie(fin);
+
+      const minutes = Math.round(frameGlobal / TAUX / 60);
+      if (flux) {
+        await flux.close();
+        const fichier = await fichierSortie.getFile();
+        ajouterCarte(URL.createObjectURL(fichier), 'musique-complete.mp3', `Fichier complet enregistré (${minutes} min)`);
+      } else {
+        const blob = new Blob(chunks, { type: 'audio/mpeg' });
+        ajouterCarte(URL.createObjectURL(blob), 'musique-complete.mp3', `Fichier complet prêt (${minutes} min)`);
+      }
     } else {
-      // Téléphone : tout en mémoire, à limiter à environ 1 heure
-      const tailleMo = (total * CANAUX * 2) / 1048576;
-      if (tailleMo > LIMITE_MOBILE_MO) {
-        throw new Error(`fichier trop lourd pour le téléphone (${Math.round(tailleMo)} Mo). Utilisez un ordinateur ou moins de morceaux.`);
+      // Mode parties : un MP3 par lot de 10
+      const nbLots = Math.ceil(total / TAILLE_LOT);
+      for (let lot = 0; lot < nbLots; lot++) {
+        const enc = new lamejs.Mp3Encoder(2, TAUX, KBPS);
+        const chunks = [];
+        const sortie = async buf => { chunks.push(buf); };
+        const debut = lot * TAILLE_LOT;
+        const groupe = morceaux.slice(debut, debut + TAILLE_LOT);
+        let framesLot = 0;
+
+        for (let k = 0; k < groupe.length; k++) {
+          const numero = debut + k + 1;
+          statut.textContent = `Partie ${lot + 1}/${nbLots} : morceau ${numero}/${total} (${groupe[k].nom})`;
+          const audio = await decoder(contexte, groupe[k]);
+          lignes.push(`${formaterTemps(frameGlobal / TAUX)} ${groupe[k].nom.replace(/\.[^.]+$/, '')}`);
+          await encoderAudio(enc, audio, sortie);
+          framesLot += audio.length;
+          frameGlobal += audio.length;
+          barre.value = Math.round((numero / total) * 100);
+          await new Promise(r => setTimeout(r, 0));
+        }
+        const fin = enc.flush();
+        if (fin.length) chunks.push(fin);
+
+        const blob = new Blob(chunks, { type: 'audio/mpeg' });
+        const nomFichier = `partie-${String(lot + 1).padStart(2, '0')}.mp3`;
+        ajouterCarte(URL.createObjectURL(blob), nomFichier,
+          `Partie ${lot + 1} / ${nbLots} (${Math.round(framesLot / TAUX / 60)} min)`);
       }
-      const blocs = [];
-      for (let i = 0; i < morceaux.length; i++) {
-        statut.textContent = `Fusion ${i + 1} / ${morceaux.length} : ${morceaux[i].nom}`;
-        lignes.push(`${formaterTemps(blocs.length ? 0 : 0)}`); // remplacé ci-dessous
-        const audio = await decoder(contexte, morceaux[i]);
-        blocs.push(versPcm(audio).buffer);
-        barre.value = 40 + Math.round(((i + 1) / morceaux.length) * 60);
-        await new Promise(r => setTimeout(r, 0));
-      }
-      // Recalcul propre des timestamps
-      lignes.length = 0;
-      let decalage = 0;
-      for (let i = 0; i < morceaux.length; i++) {
-        lignes.push(`${formaterTemps(decalage / TAUX)} ${morceaux[i].nom.replace(/\.[^.]+$/, '')}`);
-        decalage += durees[i];
-      }
-      const wav = new Blob([entete(total), ...blocs], { type: 'audio/wav' });
-      afficherResultat(URL.createObjectURL(wav), 'musique-complete.wav',
-        `Fichier complet prêt (${Math.round(total / TAUX / 60)} min)`);
     }
 
-    statut.textContent = `Terminé : environ ${Math.round(total / TAUX / 60)} minutes.`;
+    statut.textContent = `Terminé : environ ${Math.round(frameGlobal / TAUX / 60)} minutes au total.`;
     barre.value = 100;
     document.getElementById('chapitres').value = lignes.join('\n');
     document.getElementById('chapitresBloc').style.display = 'block';
   } catch (err) {
     if (flux) { try { await flux.abort(); } catch {} }
-    statut.textContent = 'Erreur : ' + err.message;
+    statut.textContent = 'Erreur : ' + err.message + ' (essayez le mode parties ou moins de morceaux)';
   } finally {
     boutonFusion.disabled = false;
     contexte.close();
