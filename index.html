@@ -31,7 +31,7 @@
 <h2>Fusion Audio</h2>
 
 <div id="zone">
-  Glissez vos fichiers WAV ou ZIP ici (1000+ fichiers)<br><br>
+  Glissez vos fichiers WAV ou ZIP ici<br><br>
   <button id="btnFichiers">Choisir des fichiers / ZIP</button>
   <button id="btnDossier">Choisir un dossier</button>
   <input type="file" id="inputFichiers" multiple accept=".wav,audio/*,.zip">
@@ -130,7 +130,17 @@ zone.addEventListener('drop', async e => {
   zone.classList.remove('over');
   await ajouter(e.dataTransfer.files);
 });
-document.getElementById('vider').onclick = () => { morceaux = []; afficher(); };
+
+document.getElementById('vider').onclick = () => { 
+  morceaux = []; 
+  parties = [];
+  lignes = [];
+  afficher(); 
+  statut.textContent = 'Tout a été effacé.';
+  zoneParties.style.display = 'none';
+  actions.style.display = 'none';
+  document.getElementById('chapitresBloc').style.display = 'none';
+};
 
 function afficher() {
   liste.innerHTML = '';
@@ -196,12 +206,14 @@ boutonFusion.addEventListener('click', async () => {
   barre.value = 0;
   zoneParties.innerHTML = '';
   zoneParties.style.display = 'block';
+  
+  // Hlakanya ka hloko: Re thoma ka tše ntšha ka moka go thibela diposo tša khale
   parties = [];
   lignes = [];
 
   const total = morceaux.length;
   const nbLots = Math.ceil(total / TAILLE_LOT);
-  let frameGlobal = 0;
+  let frameGlobal = 0; // E thoma ka 0 ka nepo
 
   try {
     for (let lot = 0; lot < nbLots; lot++) {
@@ -221,7 +233,10 @@ boutonFusion.addEventListener('click', async () => {
           blocsPcm.push(pcmData);
           const nbFramesFichier = pcmData.length / CANAUX;
           const nomPropre = groupe[k].nom.replace(/\.[^.]+$/, '');
+          
+          // E ngwala nako ya nnete go tloga go 0:00
           lignes.push(`${formaterTemps(frameGlobal / TAUX)} ${nomPropre}`);
+          
           framesLot += nbFramesFichier;
           frameGlobal += nbFramesFichier;
         }
@@ -246,7 +261,7 @@ boutonFusion.addEventListener('click', async () => {
     }
 
     barre.value = 100;
-    statut.textContent = `Terminé ! ${nbLots} partie(s) générée(s) avec succès.`;
+    statut.textContent = `Terminé ! ${nbLots} partie(s) générée(s) avec des timestamps parfaits.`;
     document.getElementById('chapitres').value = lignes.join('\n');
     document.getElementById('chapitresBloc').style.display = 'block';
     actions.style.display = 'block';
@@ -273,7 +288,6 @@ document.getElementById('toutTelecharger').addEventListener('click', async () =>
   statut.textContent = 'ZIP téléchargé !';
 });
 
-// Le 3e bouton pour assembler tout d'un coup en WAV instantané
 document.getElementById('assembler').addEventListener('click', async () => {
   if (parties.length === 0) return;
   
