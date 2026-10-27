@@ -17,6 +17,7 @@
   ul { list-style: none; padding: 0; max-height: 300px; overflow-y: auto; border: 1px solid #dbe7f7; border-radius: 6px; }
   li { padding: 6px 8px; border-bottom: 1px solid #dbe7f7; display: flex; justify-content: space-between; align-items: center; gap: 8px; }
   #statut { margin: 15px 0; font-weight: bold; }
+  #avertissement { color: #b45309; margin: 5px 0; }
   progress { width: 100%; height: 14px; display: none; }
   textarea { width: 100%; height: 220px; margin-top: 10px; font-family: monospace; box-sizing: border-box; }
   input[type=file] { display: none; }
@@ -24,14 +25,15 @@
   #parties div { margin: 8px 0; }
   #actions { display: none; margin-top: 15px; padding: 10px; border: 1px solid #dbe7f7; border-radius: 6px; }
   #resultat { margin-top: 15px; }
-  #resultat audio { width: 100%; margin: 6px 0; }
+  .carte { border: 1px solid #dbe7f7; border-radius: 6px; padding: 10px; margin: 10px 0; }
+  .carte audio { width: 100%; margin: 6px 0; }
 </style>
 </head>
 <body>
-<h2>Fusion de fichiers audio</h2>
+<h2>Fusion audio</h2>
 
 <div id="zone">
-  Glissez vos musiques ou vos fichiers ZIP ici<br><br>
+  Glissez vos fichiers audio ou vos ZIP ici<br><br>
   <button id="btnFichiers">Choisir des fichiers ou un ZIP</button>
   <button id="btnDossier">Choisir un dossier</button>
   <input type="file" id="inputFichiers" multiple accept="audio/*,.zip">
@@ -46,6 +48,7 @@
 
 <progress id="barre" max="100" value="0"></progress>
 <div id="statut"></div>
+<div id="avertissement"></div>
 
 <div id="parties"></div>
 
@@ -68,24 +71,33 @@
 const TAUX = 44100;
 const CANAUX = 2;
 const TAILLE_LOT = 10;
-const TAILLE_ENTETE = 44;
-const EXT = /\.(mp3|wav|m4a|ogg|flac|aac)$/i;
+const TAILLE_BLOC = 4096;
+const CONFIG = {
+  codec: 'mp4a.40.2',
+  sampleRate: TAUX,
+  numberOfChannels: CANAUX,
+  bitrate: 128000,
+  aac: { format: 'adts' }
+};
+const EXT = /\.(mp3|wav|m4a|ogg|flac|aac|wma|webm)$/i;
 
 let morceaux = [];   // { nom, lire() }
-let parties = [];    // { nom, blob, frames }
-let lignes = [];     // timestamps
+let parties = [];    // { nom, blob, minutes }
+let lignes = [];     // timestamps par position de morceau
+let ignores = [];
 let urlsActives = [];
 
 const zone = document.getElementById('zone');
 const liste = document.getElementById('liste');
 const statut = document.getElementById('statut');
 const barre = document.getElementById('barre');
-const inputFichiers = document.getElementById('inputFichiers');
-const inputDossier = document.getElementById('inputDossier');
-const boutonFusion = document.getElementById('fusionner');
+const avertissement = document.getElementById('avertissement');
 const zoneParties = document.getElementById('parties');
 const actions = document.getElementById('actions');
 const resultat = document.getElementById('resultat');
+const boutonFusion = document.getElementById('fusionner');
+const inputFichiers = document.getElementById('inputFichiers');
+const inputDossier = document.getElementById('inputDossier');
 
 document.getElementById('btnFichiers').onclick = () => inputFichiers.click();
 document.getElementById('btnDossier').onclick = () => inputDossier.click();
@@ -94,9 +106,9 @@ const pause = () => new Promise(r => setTimeout(r, 0));
 
 function nomBase(chemin) { return chemin.split('/').pop(); }
 
-function estAudio(nom) {
+function estValide(nom) {
   const base = nomBase(nom);
-  return EXT.test(base) && !nom.includes('__MACOSX') && !base.startsWith('.');
+  return base.length > 0 && !base.startsWith('.') && !nom.includes('__MACOSX');
 }
 
 function trier(tab) {
@@ -108,7 +120,7 @@ async function lireZip(fichier) {
   const zip = await JSZip.loadAsync(fichier);
   const sortie = [];
   for (const entree of Object.values(zip.files)) {
-    if (entree.dir || !estAudio(entree.name)) continue;
+    if (entree.dir || !estValide(entree.name) || !EXT.test(entree.name)) continue;
     sortie.push({ nom: nomBase(entree.name), lire: () => entree.async('arraybuffer') });
   }
   return sortie;
@@ -120,7 +132,7 @@ async function ajouter(liste_fichiers) {
     try {
       if (/\.zip$/i.test(f.name)) {
         sources.push(...await lireZip(f));
-      } else if (f.type.startsWith('audio') || EXT.test(f.name)) {
+      } else if (estValide(f.name)) {
         sources.push({ nom: f.name, lire: () => f.arrayBuffer() });
       }
     } catch (err) {
@@ -179,40 +191,64 @@ function formaterTemps(secondes) {
   return h > 0 ? `${h}:${String(m).padStart(2, '0')}:${sec}` : `${m}:${sec}`;
 }
 
-// En-tête WAV 16 bits stéréo pour un nombre d'échantillons donné
-function entete(nbFrames) {
-  const longueur = nbFrames * CANAUX * 2;
-  const v = new DataView(new ArrayBuffer(TAILLE_ENTETE));
-  const ecrire = (p, t) => { for (let i = 0; i < t.length; i++) v.setUint8(p + i, t.charCodeAt(i)); };
-  ecrire(0, 'RIFF'); v.setUint32(4, 36 + longueur, true); ecrire(8, 'WAVE');
-  ecrire(12, 'fmt '); v.setUint32(16, 16, true); v.setUint16(20, 1, true);
-  v.setUint16(22, CANAUX, true); v.setUint32(24, TAUX, true);
-  v.setUint32(28, TAUX * CANAUX * 2, true); v.setUint16(32, CANAUX * 2, true);
-  v.setUint16(34, 16, true); ecrire(36, 'data'); v.setUint32(40, longueur, true);
-  return v.buffer;
-}
-
-function versPcm(audio) {
-  const n = audio.length;
-  const g = audio.getChannelData(0);
-  const d = audio.numberOfChannels > 1 ? audio.getChannelData(1) : g;
-  const out = new Int16Array(n * 2);
-  for (let i = 0; i < n; i++) {
-    const l = Math.max(-1, Math.min(1, g[i]));
-    const r = Math.max(-1, Math.min(1, d[i]));
-    out[i * 2] = l < 0 ? l * 0x8000 : l * 0x7FFF;
-    out[i * 2 + 1] = r < 0 ? r * 0x8000 : r * 0x7FFF;
+async function decoderSur(ctx, source) {
+  try {
+    return await ctx.decodeAudioData(await source.lire());
+  } catch {
+    return null;
   }
-  return out;
 }
 
-async function decoder(contexte, source) {
-  return contexte.decodeAudioData(await source.lire());
-}
+// Encode une liste de morceaux en une partie AAC (ADTS, légère)
+async function encoderPartie(indices, debutGlobal, ctx) {
+  const chunks = [];
+  let erreur = null;
+  const encoder = new AudioEncoder({
+    output: chunk => {
+      const b = new Uint8Array(chunk.byteLength);
+      chunk.copyTo(b);
+      chunks.push(b);
+    },
+    error: e => { erreur = e; }
+  });
+  encoder.configure(CONFIG);
 
-function libererUrls() {
-  urlsActives.forEach(u => URL.revokeObjectURL(u));
-  urlsActives = [];
+  let frames = 0;
+  for (const idx of indices) {
+    const audio = await decoderSur(ctx, morceaux[idx]);
+    if (!audio) { ignores.push(morceaux[idx].nom); lignes[idx] = null; continue; }
+
+    lignes[idx] = `${formaterTemps((debutGlobal + frames) / TAUX)} ${morceaux[idx].nom.replace(/\.[^.]+$/, '')}`;
+
+    const L = audio.getChannelData(0);
+    const R = audio.numberOfChannels > 1 ? audio.getChannelData(1) : L;
+    const n = audio.length;
+    for (let s = 0; s < n; s += TAILLE_BLOC) {
+      if (erreur) throw erreur;
+      const len = Math.min(TAILLE_BLOC, n - s);
+      const planar = new Float32Array(len * CANAUX);
+      planar.set(L.subarray(s, s + len), 0);
+      planar.set(R.subarray(s, s + len), len);
+      const data = new AudioData({
+        format: 'f32-planar',
+        sampleRate: TAUX,
+        numberOfFrames: len,
+        numberOfChannels: CANAUX,
+        timestamp: Math.round((frames + s) * 1e6 / TAUX),
+        data: planar
+      });
+      encoder.encode(data);
+      data.close();
+      while (encoder.encodeQueueSize > 8) await new Promise(r => setTimeout(r, 2));
+    }
+    frames += n;
+    await pause();
+  }
+
+  await encoder.flush();
+  encoder.close();
+  if (erreur) throw erreur;
+  return { blob: new Blob(chunks, { type: 'audio/aac' }), frames };
 }
 
 function lienTelechargement(blob, nomFichier, texte) {
@@ -225,76 +261,73 @@ function lienTelechargement(blob, nomFichier, texte) {
   return lien;
 }
 
-// Étape 1 : création des parties de 10 musiques (stockées en WAV)
+// Étape 1 : création des parties de 10 musiques
 boutonFusion.addEventListener('click', async () => {
   if (morceaux.length === 0) { statut.textContent = 'Ajoutez d\'abord des fichiers ou un ZIP.'; return; }
+  if (!window.AudioEncoder) { statut.textContent = 'Utilisez Chrome ou Edge à jour.'; return; }
+  const support = await AudioEncoder.isConfigSupported(CONFIG).catch(() => ({ supported: false }));
+  if (!support.supported) { statut.textContent = 'L\'encodage AAC n\'est pas disponible sur ce navigateur.'; return; }
 
   boutonFusion.disabled = true;
   actions.style.display = 'none';
   resultat.innerHTML = '';
+  zoneParties.innerHTML = '';
+  zoneParties.style.display = 'block';
   document.getElementById('chapitresBloc').style.display = 'none';
   barre.style.display = 'block';
   barre.value = 0;
-  zoneParties.innerHTML = '';
-  zoneParties.style.display = 'block';
-  libererUrls();
+  avertissement.textContent = '';
+  urlsActives.forEach(u => URL.revokeObjectURL(u));
+  urlsActives = [];
   parties = [];
   lignes = [];
+  ignores = [];
 
-  const contexte = new (window.AudioContext || window.webkitAudioContext)({ sampleRate: TAUX });
+  const ctx = new (window.AudioContext || window.webkitAudioContext)({ sampleRate: TAUX });
   const total = morceaux.length;
   const nbLots = Math.ceil(total / TAILLE_LOT);
   let frameGlobal = 0;
 
   try {
     for (let lot = 0; lot < nbLots; lot++) {
-      const debut = lot * TAILLE_LOT;
-      const groupe = morceaux.slice(debut, debut + TAILLE_LOT);
-      const blocs = [];
-      let framesLot = 0;
+      const indices = [];
+      for (let i = lot * TAILLE_LOT; i < Math.min((lot + 1) * TAILLE_LOT, total); i++) indices.push(i);
+      statut.textContent = `Partie ${lot + 1} / ${nbLots}...`;
+      barre.value = Math.round((lot / nbLots) * 100);
 
-      for (let k = 0; k < groupe.length; k++) {
-        const numero = debut + k + 1;
-        statut.textContent = `Partie ${lot + 1}/${nbLots} : morceau ${numero}/${total} (${groupe[k].nom})`;
-        const audio = await decoder(contexte, groupe[k]);
-        const nomPropre = groupe[k].nom.replace(/\.[^.]+$/, '');
-        lignes.push(`${formaterTemps(frameGlobal / TAUX)} ${nomPropre}`);
-        blocs.push(versPcm(audio).buffer);
-        framesLot += audio.length;
-        frameGlobal += audio.length;
-        barre.value = Math.round((numero / total) * 100);
-        await pause();
-      }
+      const { blob, frames } = await encoderPartie(indices, frameGlobal, ctx);
+      frameGlobal += frames;
 
-      const blob = new Blob([entete(framesLot), ...blocs], { type: 'audio/wav' });
-      const nom = `partie-${String(lot + 1).padStart(2, '0')}.wav`;
-      parties.push({ nom, blob, frames: framesLot });
+      const nom = `partie-${String(lot + 1).padStart(2, '0')}.aac`;
+      const minutes = Math.round(frames / TAUX / 60);
+      parties.push({ nom, blob, minutes });
 
       const bloc = document.createElement('div');
-      bloc.appendChild(lienTelechargement(blob, nom, 'Télécharger ' + nom));
+      bloc.appendChild(lienTelechargement(blob, nom, `Télécharger ${nom}`));
       const info = document.createElement('span');
-      info.textContent = ` (${Math.round(framesLot / TAUX / 60)} min)`;
+      info.textContent = ` (${minutes} min)`;
       bloc.appendChild(info);
       zoneParties.appendChild(bloc);
     }
 
     barre.value = 100;
     statut.textContent = `${nbLots} partie(s) prête(s), environ ${Math.round(frameGlobal / TAUX / 60)} minutes au total.`;
-    document.getElementById('chapitres').value = lignes.join('\n');
+    if (ignores.length) avertissement.textContent = `Fichiers ignorés (non lisibles) : ${ignores.join(', ')}`;
+    document.getElementById('chapitres').value = lignes.filter(Boolean).join('\n');
     document.getElementById('chapitresBloc').style.display = 'block';
     actions.style.display = 'block';
   } catch (err) {
-    statut.textContent = 'Erreur : ' + err.message + ' (essayez moins de morceaux à la fois)';
+    statut.textContent = 'Erreur : ' + (err.message || err) + ' (essayez moins de morceaux à la fois)';
   } finally {
+    ctx.close();
     boutonFusion.disabled = false;
-    contexte.close();
   }
 });
 
 // Choix 1 : télécharger un par un
 document.getElementById('unParUn').addEventListener('click', () => {
-  zoneParties.querySelectorAll('a').forEach(a => a.click());
-  statut.textContent = 'Cliquez sur chaque lien pour télécharger la partie correspondante.';
+  statut.textContent = 'Touchez chaque lien « Télécharger partie-XX.aac » pour récupérer la partie correspondante.';
+  zoneParties.scrollIntoView({ behavior: 'smooth' });
 });
 
 // Choix 2 : télécharger toutes les parties d'un coup
@@ -307,34 +340,33 @@ document.getElementById('toutTelecharger').addEventListener('click', async () =>
   statut.textContent = 'Téléchargements lancés. Acceptez l\'autorisation si le navigateur la demande.';
 });
 
-// Choix 3 : assembler toutes les parties en un seul audio
-// Les blocs sont collés sans recopie : le navigateur ne charge pas tout en mémoire
+// Choix 3 : assembler toutes les parties en un seul fichier.
+// Les parties AAC sont collées bout à bout sans être décodées : rapide et léger.
 document.getElementById('assembler').addEventListener('click', () => {
   if (parties.length === 0) return;
   statut.textContent = 'Assemblage en cours...';
 
-  const totalFrames = parties.reduce((a, p) => a + p.frames, 0);
-  const donnees = parties.map(p => p.blob.slice(TAILLE_ENTETE));
-  const complet = new Blob([entete(totalFrames), ...donnees], { type: 'audio/wav' });
-  const minutes = Math.round(totalFrames / TAUX / 60);
+  const complet = new Blob(parties.map(p => p.blob), { type: 'audio/aac' });
+  const minutes = parties.reduce((a, p) => a + p.minutes, 0);
+  const url = URL.createObjectURL(complet);
+  urlsActives.push(url);
 
+  resultat.innerHTML = '';
   const carte = document.createElement('div');
+  carte.className = 'carte';
   const titre = document.createElement('strong');
   titre.textContent = `Audio complet (${minutes} min, ${parties.length} parties)`;
   const lecteur = document.createElement('audio');
   lecteur.controls = true;
   lecteur.preload = 'metadata';
-  const url = URL.createObjectURL(complet);
-  urlsActives.push(url);
   lecteur.src = url;
   const lien = document.createElement('a');
   lien.href = url;
-  lien.download = 'musique-complete.wav';
-  lien.textContent = 'Télécharger musique-complete.wav';
+  lien.download = 'musique-complete.aac';
+  lien.textContent = 'Télécharger musique-complete.aac';
   carte.append(titre, document.createElement('br'), lecteur, document.createElement('br'), lien);
-
-  resultat.innerHTML = '';
   resultat.appendChild(carte);
+
   statut.textContent = 'Audio complet prêt : écoutez-le ou téléchargez-le.';
   carte.scrollIntoView({ behavior: 'smooth' });
 });
