@@ -23,8 +23,6 @@
   #parties { display: none; margin-top: 15px; }
   #parties div { margin: 8px 0; }
   #actions { display: none; margin-top: 15px; padding: 10px; border: 1px solid #dbe7f7; border-radius: 6px; }
-  #resultat { margin-top: 15px; }
-  #resultat audio { width: 100%; margin: 6px 0; }
 </style>
 </head>
 <body>
@@ -34,7 +32,8 @@
   Glissez vos fichiers WAV ou ZIP ici (1000+ fichiers)<br><br>
   <button id="btnFichiers">Choisir des fichiers / ZIP</button>
   <button id="btnDossier">Choisir un dossier</button>
-  <input type="file" id="inputFichiers" multiple accept="audio/wav,.zip">
+  <!-- Correction appliquée ici pour forcer le téléphone à afficher les fichiers WAV -->
+  <input type="file" id="inputFichiers" multiple accept=".wav,audio/*,.zip">
   <input type="file" id="inputDossier" webkitdirectory>
 </div>
 
@@ -42,7 +41,7 @@
 <ul id="liste"></ul>
 <button id="vider" class="petit">Tout effacer</button>
 <br>
-<button id="fusionner">Créer les parties de 10 en 10</button>
+<button id="fusionner">Créer les parties de 10 en 10 (Instantané)</button>
 
 <progress id="barre" max="100" value="0"></progress>
 <div id="statut"></div>
@@ -104,7 +103,7 @@ async function ajouter(liste_fichiers) {
     try {
       if (/\.zip$/i.test(f.name)) {
         sources.push(...await lireZip(f));
-      } else if (/\.wav$/i.test(f.name)) {
+      } else if (/\.wav$/i.test(f.name) || f.type.startsWith('audio')) {
         sources.push({ nom: f.name, lire: () => f.arrayBuffer() });
       }
     } catch (err) {
@@ -144,7 +143,6 @@ function afficher() {
   document.getElementById('nombre').textContent = morceaux.length;
 }
 
-// Fonction de formatage propre des secondes en HH:MM:SS ou MM:SS
 function formaterTemps(secondes) {
   const s = Math.floor(secondes);
   const h = Math.floor(s / 3600);
@@ -182,7 +180,6 @@ function extrairePcmWav(buffer) {
   return pcmData;
 }
 
-// Étape 1 : Création ultra-rapide des parties avec calcul correct des timestamps
 boutonFusion.addEventListener('click', async () => {
   if (morceaux.length === 0) { statut.textContent = 'Ajoutez d\'abord des fichiers.'; return; }
 
@@ -198,7 +195,7 @@ boutonFusion.addEventListener('click', async () => {
 
   const total = morceaux.length;
   const nbLots = Math.ceil(total / TAILLE_LOT);
-  let frameGlobal = 0; // Compteur précis des échantillons audio
+  let frameGlobal = 0;
 
   try {
     for (let lot = 0; lot < nbLots; lot++) {
@@ -218,10 +215,7 @@ boutonFusion.addEventListener('click', async () => {
           blocsPcm.push(pcmData);
           const nbFramesFichier = pcmData.length / CANAUX;
           const nomPropre = groupe[k].nom.replace(/\.[^.]+$/, '');
-          
-          // Calcul exact du timestamp basé sur le nombre total de frames écoulées / taux d'échantillonnage
           lignes.push(`${formaterTemps(frameGlobal / TAUX)} ${nomPropre}`);
-          
           framesLot += nbFramesFichier;
           frameGlobal += nbFramesFichier;
         }
