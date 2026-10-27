@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Fusion Audio Anti-Crash Absolu</title>
+<title>Fusion Audio Anti-Crash Définitif</title>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/lamejs/1.2.1/lame.min.js"></script>
 <style>
@@ -29,7 +29,7 @@
 </style>
 </head>
 <body>
-<h2>Fusion et Conversion Audio (Anti-Crash Mémoire)</h2>
+<h2>Fusion et Conversion Audio (Zéro Surcharge Mémoire)</h2>
 
 <div id="zone">
   Glissez vos fichiers WAV ou ZIP ici (600 à 1000+ fichiers)<br><br>
@@ -43,7 +43,7 @@
 <ul id="liste"></ul>
 <button id="vider" class="petit">Tout effacer</button>
 <br>
-<button id="fusionner">Créer les parties de 10 en 10 sans saturer la RAM</button>
+<button id="fusionner">Créer les parties de 10 en 10 (Anti-Crash)</button>
 
 <progress id="barre" max="100" value="0"></progress>
 <div id="statut"></div>
@@ -72,7 +72,7 @@ const TAILLE_LOT = 10;
 const TAILLE_ENTETE = 44;
 
 let morceaux = [];   
-let parties = [];    
+let parties = [];    // Stocke uniquement les métadonnées et les blobs finaux, pas les gros tableaux de pixels/PCM bruts
 let lignes = [];     
 let urlsActives = [];
 
@@ -90,7 +90,7 @@ const resultat = document.getElementById('resultat');
 document.getElementById('btnFichiers').onclick = () => inputFichiers.click();
 document.getElementById('btnDossier').onclick = () => inputDossier.click();
 
-const pause = () => new Promise(r => setTimeout(r, 20)); // Pause longue pour laisser le "host" nettoyer la mémoire
+const pause = () => new Promise(r => setTimeout(r, 10));
 
 function nomBase(chemin) { return chemin.split('/').pop(); }
 
@@ -187,7 +187,7 @@ function extrairePcmWav(buffer) {
   return pcmData;
 }
 
-// Étape 1 : Création des parties 10 par 10 avec nettoyage radical de la mémoire à chaque lot
+// Étape 1 : Création des parties 10 par 10 sans accumulation en mémoire
 boutonFusion.addEventListener('click', async () => {
   if (morceaux.length === 0) { statut.textContent = 'Ajoutez d\'abord des fichiers.'; return; }
 
@@ -229,14 +229,13 @@ boutonFusion.addEventListener('click', async () => {
           frameGlobal += nbFramesFichier;
         }
         barre.value = Math.round((numero / total) * 100);
-        await pause();
       }
 
       const blobWav = new Blob([creerEnteteWav(framesLot), ...blocsPcm.map(b => b.buffer)], { type: 'audio/wav' });
       const nom = `partie-${String(lot + 1).padStart(2, '0')}.wav`;
       
-      // On stocke uniquement les blobs et un minimum pour l'assemblage final
-      parties.push({ nom, blob: blobWav, blocsPcm });
+      // On stocke seulement le blob final de la partie (les blocs bruts sont oubliés pour libérer la RAM)
+      parties.push({ nom, blob: blobWav });
 
       const url = URL.createObjectURL(blobWav);
       urlsActives.push(url);
@@ -248,12 +247,11 @@ boutonFusion.addEventListener('click', async () => {
       div.appendChild(a);
       zoneParties.appendChild(div);
 
-      // Force le Garbage Collector du navigateur à respirer entre les lots
-      await pause();
+      await pause(); // Laisse respirer l'hôte
     }
 
     barre.value = 100;
-    statut.textContent = `Terminé ! ${nbLots} partie(s) générée(s) sans saturer l'hôte.`;
+    statut.textContent = `Terminé ! ${nbLots} partie(s) générée(s) sans bug mémoire.`;
     document.getElementById('chapitres').value = lignes.join('\n');
     document.getElementById('chapitresBloc').style.display = 'block';
     actions.style.display = 'block';
@@ -280,12 +278,12 @@ document.getElementById('toutTelecharger').addEventListener('click', async () =>
   statut.textContent = 'ZIP téléchargé !';
 });
 
-// Assemblage et conversion finale sécurisée en MP3 par petits morceaux
+// Assemblage et conversion finale sécurisée en MP3 à partir des fichiers sources originaux un par un
 document.getElementById('assembler').addEventListener('click', async () => {
-  if (parties.length === 0) return;
+  if (morceaux.length === 0) return;
   
   document.getElementById('assembler').disabled = true;
-  statut.textContent = 'Assemblage et conversion finale en MP3 en cours...';
+  statut.textContent = 'Assemblage et conversion finale en MP3 en cours (flux sécurisé)...';
   barre.value = 0;
   barre.style.display = 'block';
   await pause();
@@ -293,35 +291,34 @@ document.getElementById('assembler').addEventListener('click', async () => {
   try {
     const encoder = new lamejs.Mp3Encoder(CANAUX, TAUX, 128);
     const mp3Chunks = [];
-    let totalBlocs = 0;
-    parties.forEach(p => totalBlocs += p.blocsPcm.length);
-    let blocTraite = 0;
+    const total = morceaux.length;
 
-    for (let p of parties) {
-      for (let pcmArray of p.blocsPcm) {
+    for (let i = 0; i < total; i++) {
+      statut.textContent = `Conversion MP3 globale : fichier ${i + 1}/${total}`;
+      const arrayBuf = await morceaux[i].lire();
+      const pcmArray = extrairePcmWav(arrayBuf);
+
+      if (pcmArray) {
         const samples = pcmArray.length / CANAUX;
         const left = new Int16Array(samples);
         const right = new Int16Array(samples);
 
-        for (let i = 0; i < samples; i++) {
-          left[i] = pcmArray[i * 2];
-          right[i] = pcmArray[i * 2 + 1];
+        for (let j = 0; j < samples; j++) {
+          left[j] = pcmArray[j * 2];
+          right[j] = pcmArray[j * 2 + 1];
         }
 
         const sampleBlockSize = 1152;
-        for (let i = 0; i < samples; i += sampleBlockSize) {
-          const chunkL = left.subarray(i, i + sampleBlockSize);
-          const chunkR = right.subarray(i, i + sampleBlockSize);
+        for (let s = 0; s < samples; s += sampleBlockSize) {
+          const chunkL = left.subarray(s, s + sampleBlockSize);
+          const chunkR = right.subarray(s, s + sampleBlockSize);
           const buf = encoder.encodeBuffer(chunkL, chunkR);
           if (buf.length > 0) mp3Chunks.push(new Int8Array(buf));
         }
-
-        blocTraite++;
-        if (blocTraite % 5 === 0) {
-          barre.value = Math.round((blocTraite / totalBlocs) * 100);
-          await pause();
-        }
       }
+
+      barre.value = Math.round(((i + 1) / total) * 100);
+      if (i % 5 === 0) await pause(); // Pause fréquente pour empêcher le navigateur de crasher
     }
 
     const endBuf = encoder.flush();
