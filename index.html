@@ -69,23 +69,12 @@ const TAUX = 44100;
 const CANAUX = 2;
 const TAILLE_LOT = 10;
 const TAILLE_ENTETE = 44;
-const TAILLE_BLOC = 4096;        // échantillons envoyés à l'encodeur à la fois
-const LECTURE_FRAMES = 65536;    // échantillons lus d'une partie à la fois
-const SEUIL_TAMPON = 8 * 1048576; // on range l'AAC par paquets de 8 Mo
-const CONFIG = {
-  codec: 'mp4a.40.2',
-  sampleRate: TAUX,
-  numberOfChannels: CANAUX,
-  bitrate: 128000,
-  aac: { format: 'adts' }
-};
 const EXT = /\.(mp3|wav|m4a|ogg|flac|aac)$/i;
 
 let morceaux = [];   // { nom, lire() }
 let parties = [];    // { nom, blob, frames }
 let lignes = [];     // timestamps
 let urlsActives = [];
-let verrou = null;   // empêche la mise en veille de l'écran
 
 const zone = document.getElementById('zone');
 const liste = document.getElementById('liste');
@@ -94,7 +83,6 @@ const barre = document.getElementById('barre');
 const inputFichiers = document.getElementById('inputFichiers');
 const inputDossier = document.getElementById('inputDossier');
 const boutonFusion = document.getElementById('fusionner');
-const boutonAssembler = document.getElementById('assembler');
 const zoneParties = document.getElementById('parties');
 const actions = document.getElementById('actions');
 const resultat = document.getElementById('resultat');
@@ -103,14 +91,6 @@ document.getElementById('btnFichiers').onclick = () => inputFichiers.click();
 document.getElementById('btnDossier').onclick = () => inputDossier.click();
 
 const pause = () => new Promise(r => setTimeout(r, 0));
-
-async function garderEcranAllume() {
-  try { if (navigator.wakeLock) verrou = await navigator.wakeLock.request('screen'); } catch {}
-}
-function relacherEcran() {
-  try { if (verrou) verrou.release(); } catch {}
-  verrou = null;
-}
 
 function nomBase(chemin) { return chemin.split('/').pop(); }
 
@@ -260,7 +240,6 @@ boutonFusion.addEventListener('click', async () => {
   libererUrls();
   parties = [];
   lignes = [];
-  await garderEcranAllume();
 
   const contexte = new (window.AudioContext || window.webkitAudioContext)({ sampleRate: TAUX });
   const total = morceaux.length;
@@ -309,7 +288,6 @@ boutonFusion.addEventListener('click', async () => {
   } finally {
     boutonFusion.disabled = false;
     contexte.close();
-    relacherEcran();
   }
 });
 
@@ -329,109 +307,36 @@ document.getElementById('toutTelecharger').addEventListener('click', async () =>
   statut.textContent = 'Téléchargements lancés. Acceptez l\'autorisation si le navigateur la demande.';
 });
 
-// Choix 3 : assembler toutes les parties en un seul audio.
-// Un WAV ne peut pas dépasser 4 Go : on compresse donc en AAC, partie par partie,
-// avec un seul encodeur pour que l'audio reste continu.
-boutonAssembler.addEventListener('click', async () => {
+// Choix 3 : assembler toutes les parties en un seul audio
+// Les blocs sont collés sans recopie : le navigateur ne charge pas tout en mémoire
+document.getElementById('assembler').addEventListener('click', () => {
   if (parties.length === 0) return;
-  if (!window.AudioEncoder) { statut.textContent = 'Utilisez Chrome ou Edge à jour pour assembler.'; return; }
-  const support = await AudioEncoder.isConfigSupported(CONFIG).catch(() => ({ supported: false }));
-  if (!support.supported) { statut.textContent = 'L\'encodage AAC n\'est pas disponible sur ce navigateur.'; return; }
+  statut.textContent = 'Assemblage en cours...';
 
-  boutonAssembler.disabled = true;
+  const totalFrames = parties.reduce((a, p) => a + p.frames, 0);
+  const donnees = parties.map(p => p.blob.slice(TAILLE_ENTETE));
+  const complet = new Blob([entete(totalFrames), ...donnees], { type: 'audio/wav' });
+  const minutes = Math.round(totalFrames / TAUX / 60);
+
+  const carte = document.createElement('div');
+  const titre = document.createElement('strong');
+  titre.textContent = `Audio complet (${minutes} min, ${parties.length} parties)`;
+  const lecteur = document.createElement('audio');
+  lecteur.controls = true;
+  lecteur.preload = 'metadata';
+  const url = URL.createObjectURL(complet);
+  urlsActives.push(url);
+  lecteur.src = url;
+  const lien = document.createElement('a');
+  lien.href = url;
+  lien.download = 'musique-complete.wav';
+  lien.textContent = 'Télécharger musique-complete.wav';
+  carte.append(titre, document.createElement('br'), lecteur, document.createElement('br'), lien);
+
   resultat.innerHTML = '';
-  barre.style.display = 'block';
-  barre.value = 0;
-  await garderEcranAllume();
-
-  const paquets = [];   // Blobs de 8 Mo environ (stockés hors de la mémoire JavaScript)
-  let tampon = [];
-  let tailleTampon = 0;
-  let erreur = null;
-
-  const viderTampon = () => {
-    if (tampon.length) { paquets.push(new Blob(tampon)); tampon = []; tailleTampon = 0; }
-  };
-
-  const encoder = new AudioEncoder({
-    output: chunk => {
-      const b = new Uint8Array(chunk.byteLength);
-      chunk.copyTo(b);
-      tampon.push(b);
-      tailleTampon += b.length;
-      if (tailleTampon >= SEUIL_TAMPON) viderTampon();
-    },
-    error: e => { erreur = e; }
-  });
-  encoder.configure(CONFIG);
-
-  try {
-    let position = 0; // échantillons déjà envoyés à l'encodeur
-    for (let p = 0; p < parties.length; p++) {
-      statut.textContent = `Assemblage : partie ${p + 1} / ${parties.length}`;
-      barre.value = Math.round((p / parties.length) * 100);
-
-      const { blob, frames } = parties[p];
-      for (let f = 0; f < frames; f += LECTURE_FRAMES) {
-        const n = Math.min(LECTURE_FRAMES, frames - f);
-        const debut = TAILLE_ENTETE + f * CANAUX * 2;
-        const buf = await blob.slice(debut, debut + n * CANAUX * 2).arrayBuffer();
-        const pcm = new Int16Array(buf);
-
-        for (let s = 0; s < n; s += TAILLE_BLOC) {
-          if (erreur) throw erreur;
-          const len = Math.min(TAILLE_BLOC, n - s);
-          const data = new AudioData({
-            format: 's16',
-            sampleRate: TAUX,
-            numberOfFrames: len,
-            numberOfChannels: CANAUX,
-            timestamp: Math.round(position * 1e6 / TAUX),
-            data: pcm.subarray(s * CANAUX, (s + len) * CANAUX)
-          });
-          encoder.encode(data);
-          data.close();
-          position += len;
-          while (encoder.encodeQueueSize > 8) await new Promise(r => setTimeout(r, 2));
-        }
-        await pause();
-      }
-    }
-
-    await encoder.flush();
-    if (erreur) throw erreur;
-    viderTampon();
-
-    const complet = new Blob(paquets, { type: 'audio/aac' });
-    const minutes = Math.round(position / TAUX / 60);
-    const mo = Math.round(complet.size / 1048576);
-    const url = URL.createObjectURL(complet);
-    urlsActives.push(url);
-
-    const carte = document.createElement('div');
-    const titre = document.createElement('strong');
-    titre.textContent = `Audio complet (${minutes} min, ${mo} Mo, ${parties.length} parties)`;
-    const lecteur = document.createElement('audio');
-    lecteur.controls = true;
-    lecteur.preload = 'metadata';
-    lecteur.src = url;
-    const lien = document.createElement('a');
-    lien.href = url;
-    lien.download = 'musique-complete.aac';
-    lien.textContent = 'Télécharger musique-complete.aac';
-    carte.append(titre, document.createElement('br'), lecteur, document.createElement('br'), lien);
-    resultat.appendChild(carte);
-
-    barre.value = 100;
-    statut.textContent = 'Audio complet prêt : écoutez-le ou téléchargez-le.';
-    carte.scrollIntoView({ behavior: 'smooth' });
-  } catch (err) {
-    statut.textContent = 'Erreur pendant l\'assemblage : ' + (err.message || err);
-  } finally {
-    try { encoder.close(); } catch {}
-    boutonAssembler.disabled = false;
-    relacherEcran();
-  }
+  resultat.appendChild(carte);
+  statut.textContent = 'Audio complet prêt : écoutez-le ou téléchargez-le.';
+  carte.scrollIntoView({ behavior: 'smooth' });
 });
 
 document.getElementById('copier').onclick = () => {
