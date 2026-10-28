@@ -8,7 +8,6 @@
 <style>
   body { font-family: Arial, sans-serif; max-width: 900px; margin: 0 auto; padding: 20px; color: #1e3a8a; background-color: #f8fafc; }
   
-  /* Navbar styling */
   nav { display: flex; gap: 10px; background: #1e3a8a; padding: 10px 15px; border-radius: 8px; margin-bottom: 25px; }
   nav button { background: transparent; color: #fff; border: none; padding: 10px 16px; font-size: 16px; font-weight: bold; cursor: pointer; border-radius: 6px; }
   nav button:hover { background: rgba(255, 255, 255, 0.15); }
@@ -19,8 +18,7 @@
 
   h2, h3 { color: #1e3a8a; margin-top: 0; }
   .zone-drop { border: 2px dashed #2a7ae2; border-radius: 8px; padding: 25px; text-align: center; background: #f0f7ff; margin-bottom: 15px; }
-  .zone-drop.over { background: #d6eaff; }
-
+  
   button { padding: 9px 16px; margin: 4px; cursor: pointer; background: #2a7ae2; color: #fff; border: none; border-radius: 6px; font-weight: 500; }
   button:hover { background: #1e5fc0; }
   button:disabled { background: #9db8dd; cursor: wait; }
@@ -34,20 +32,14 @@
   textarea { width: 100%; height: 180px; margin-top: 10px; font-family: monospace; box-sizing: border-box; }
   input[type=file] { display: none; }
   
-  #parties { display: none; margin-top: 15px; }
-  #parties div { margin: 8px 0; }
-  #actions { display: none; margin-top: 15px; padding: 12px; border: 1px solid #dbe7f7; border-radius: 6px; background: #fff; }
   .resultat-container { margin-top: 20px; background: #fff; padding: 15px; border-radius: 8px; border: 1px solid #dbe7f7; }
   audio, video { width: 100%; margin-top: 10px; border-radius: 6px; }
-
-  /* Section spécifiques vidéo */
   .preview-img { max-width: 100%; max-height: 200px; border-radius: 6px; margin-top: 10px; display: none; object-fit: contain; }
   .option-group { background: #fff; padding: 15px; border-radius: 8px; border: 1px solid #dbe7f7; margin-bottom: 15px; }
 </style>
 </head>
 <body>
 
-<!-- Navigation Bar -->
 <nav>
   <button id="tabAudio" class="active" onclick="changerOnglet('pageAudio', 'tabAudio')">🎵 Fusion Audio</button>
   <button id="tabVideo" onclick="changerOnglet('pageVideo', 'tabVideo')">🎬 Créateur Vidéo</button>
@@ -56,94 +48,60 @@
 <!-- PAGE 1 : FUSION AUDIO -->
 <div id="pageAudio" class="page active">
   <h2>Fusion de fichiers audio</h2>
-
-  <div class="zone-drop" id="zoneAudio">
-    Glissez vos musiques ou vos fichiers ZIP ici<br><br>
-    <button onclick="document.getElementById('inputFichiersAudio').click()">Choisir des fichiers ou un ZIP</button>
-    <button onclick="document.getElementById('inputDossierAudio').click()">Choisir un dossier</button>
-    <input type="file" id="inputFichiersAudio" multiple accept="audio/*,.zip">
-    <input type="file" id="inputDossierAudio" webkitdirectory>
+  <div class="zone-drop">
+    <button onclick="document.getElementById('inputFichiersAudio').click()">Choisir des musiques MP3</button>
+    <input type="file" id="inputFichiersAudio" multiple accept="audio/*">
   </div>
-
   <p>Morceaux ajoutés : <span id="nombreAudio">0</span></p>
   <ul id="listeAudio"></ul>
   <button id="viderAudio" class="petit">Tout effacer</button>
   <br><br>
-  <button id="fusionnerAudio">Créer les parties et timestamps</button>
-
+  <button id="fusionnerAudio">Créer le fichier audio global</button>
   <progress id="barreAudio" max="100" value="0"></progress>
   <div id="statutAudio" class="statut"></div>
-
-  <div id="parties"></div>
-
-  <div id="actions">
-    <strong>Que voulez-vous faire avec les parties ?</strong><br>
-    <button id="unParUn">Télécharger un par un</button>
-    <button id="toutTelecharger">Télécharger toutes les parties d'un coup</button>
-    <button id="assembler">Assembler les parties en un seul audio</button>
-  </div>
-
   <div id="resultatAudio" class="resultat-container" style="display:none;"></div>
-
-  <div id="chapitresBloc" style="display:none; margin-top:20px;">
-    <h3>Timestamps pour YouTube</h3>
-    <textarea id="chapitres" readonly></textarea>
-    <button id="copier">Copier les timestamps</button>
-  </div>
 </div>
 
 <!-- PAGE 2 : CRÉATEUR VIDÉO -->
 <div id="pageVideo" class="page">
-  <h2>Créer une vidéo à partir d'MP3 et d'une image</h2>
+  <h2>Créer une vidéo (Image de fond + MP3)</h2>
 
   <div class="option-group">
     <h3>1. Image d'arrière-plan</h3>
-    <button onclick="document.getElementById('inputImage').click()">Sélectionner une image de fond</button>
+    <button onclick="document.getElementById('inputImage').click()">Choisir une photo</button>
     <input type="file" id="inputImage" accept="image/*">
     <br>
-    <img id="apercuImage" class="preview-img" alt="Aperçu de l'image de fond">
+    <img id="apercuImage" class="preview-img" alt="Aperçu">
   </div>
 
   <div class="option-group">
-    <h3>2. Ordre des pistes audio MP3</h3>
-    <div class="zone-drop" id="zoneVideo">
-      Glissez vos musiques MP3 ici<br><br>
-      <button onclick="document.getElementById('inputFichiersVideo').click()">Ajouter des musiques</button>
-      <input type="file" id="inputFichiersVideo" multiple accept="audio/*,.zip">
+    <h3>2. Pistes audio MP3 (dans l'ordre)</h3>
+    <div class="zone-drop">
+      <button onclick="document.getElementById('inputFichiersVideo').click()">Ajouter des MP3</button>
+      <input type="file" id="inputFichiersVideo" multiple accept="audio/*">
     </div>
     <p>Morceaux ajoutés : <span id="nombreVideo">0</span></p>
     <ul id="listeVideo"></ul>
-    <button id="viderVideo" class="petit">Effacer les musiques</button>
+    <button id="viderVideo" class="petit">Effacer la liste</button>
   </div>
 
-  <button id="genererVideo" style="font-size: 16px; padding: 12px 20px;">🎥 Générer la vidéo</button>
-
+  <button id="genererVideo">🎥 Générer la vidéo</button>
   <progress id="barreVideo" max="100" value="0"></progress>
   <div id="statutVideo" class="statut"></div>
 
   <div id="resultatVideo" class="resultat-container" style="display:none;">
-    <h3>Résultat de la vidéo</h3>
+    <h3>Résultat</h3>
     <video id="lecteurVideo" controls></video>
     <br><br>
-    <a id="lienTelechargerVideo" style="display:inline-block;"><button>💾 Télécharger la vidéo</button></a>
+    <a id="lienTelechargerVideo"><button>💾 Télécharger la vidéo</button></a>
   </div>
 </div>
 
 <script>
-const TAUX = 44100;
-const CANAUX = 2;
-const TAILLE_LOT = 10;
-const TAILLE_ENTETE = 44;
-const EXT = /\.(mp3|wav|m4a|ogg|flac|aac|opus)$/i;
-
-let morceauxAudio = [];   
+let morceauxAudio = [];
 let morceauxVideo = [];
-let partiesAudio = [];    
-let lignesChapitres = [];     
-let urlsActives = [];
 let imageFondElement = null;
 
-// Gestions des Onglets
 function changerOnglet(pageId, tabId) {
   document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
   document.querySelectorAll('nav button').forEach(b => b.classList.remove('active'));
@@ -151,107 +109,81 @@ function changerOnglet(pageId, tabId) {
   document.getElementById(tabId).classList.add('active');
 }
 
-const pause = () => new Promise(r => setTimeout(r, 0));
-function nomBase(chemin) { return chemin.split('/').pop(); }
-function estAudio(nom) {
-  const base = nomBase(nom);
-  return EXT.test(base) && !nom.includes('__MACOSX') && !base.startsWith('.');
-}
-function trier(tab) {
-  tab.sort((a, b) => a.nom.localeCompare(b.nom, 'fr', { numeric: true }));
-}
-
-async function lireZip(fichier) {
-  const zip = await JSZip.loadAsync(fichier);
-  const sortie = [];
-  for (const entree of Object.values(zip.files)) {
-    if (entree.dir || !estAudio(entree.name)) continue;
-    sortie.push({ nom: nomBase(entree.name), lire: () => entree.async('arraybuffer') });
+function gererAjoutFichiers(files, tableau, callback) {
+  for (let f of files) {
+    tableau.push({ nom: f.name, file: f });
   }
-  return sortie;
+  callback();
 }
 
-// --- LOGIQUE COMMUNE D'AJOUT DE FICHIERS ---
-async function traiterFichiers(fichiers, tableauCible, callbackAffichage) {
-  const sources = [];
-  for (const f of Array.from(fichiers)) {
-    try {
-      if (/\.zip$/i.test(f.name)) {
-        sources.push(...await lireZip(f));
-      } else if (f.type.startsWith('audio') || EXT.test(f.name)) {
-        sources.push({ nom: f.name, lire: () => f.arrayBuffer() });
-      }
-    } catch (err) {
-      console.error(err);
-    }
-  }
-  trier(sources);
-  tableauCible.push(...sources);
-  callbackAffichage();
-}
-
-// --- LOGIQUE PAGE 1 (AUDIO) ---
-const inputFichiersAudio = document.getElementById('inputFichiersAudio');
-const inputDossierAudio = document.getElementById('inputDossierAudio');
-const listeAudio = document.getElementById('listeAudio');
-const statutAudio = document.getElementById('statutAudio');
-const barreAudio = document.getElementById('barreAudio');
-
-inputFichiersAudio.addEventListener('change', async e => { await traiterFichiers(e.target.files, morceauxAudio, afficherAudio); e.target.value = ''; });
-inputDossierAudio.addEventListener('change', async e => { await traiterFichiers(e.target.files, morceauxAudio, afficherAudio); e.target.value = ''; });
-
-const zoneAudio = document.getElementById('zoneAudio');
-zoneAudio.addEventListener('dragover', e => { e.preventDefault(); zoneAudio.classList.add('over'); });
-zoneAudio.addEventListener('dragleave', () => zoneAudio.classList.remove('over'));
-zoneAudio.addEventListener('drop', async e => {
-  e.preventDefault();
-  zoneAudio.classList.remove('over');
-  await traiterFichiers(e.dataTransfer.files, morceauxAudio, afficherAudio);
+// --- AUDIO ---
+const inputAudio = document.getElementById('inputFichiersAudio');
+inputAudio.addEventListener('change', e => {
+  gererAjoutFichiers(e.target.files, morceauxAudio, afficherAudio);
+  e.target.value = '';
 });
 
 function afficherAudio() {
-  afficherListe(morceauxAudio, listeAudio, 'nombreAudio', afficherAudio);
+  const ul = document.getElementById('listeAudio');
+  ul.innerHTML = '';
+  morceauxAudio.forEach((m, i) => {
+    const li = document.createElement('li');
+    li.innerHTML = `<span>${i+1}. ${m.nom}</span> <button class="petit" onclick="morceauxAudio.splice(${i},1);afficherAudio()">✕</button>`;
+    ul.appendChild(li);
+  });
+  document.getElementById('nombreAudio').textContent = morceauxAudio.length;
 }
 
-document.getElementById('viderAudio').onclick = () => { 
-  morceauxAudio = []; 
-  afficherAudio(); 
-  statutAudio.textContent = 'Tout a été effacé.';
-  document.getElementById('parties').style.display = 'none';
-  document.getElementById('actions').style.display = 'none';
-  document.getElementById('resultatAudio').style.display = 'none';
-  document.getElementById('chapitresBloc').style.display = 'none';
+document.getElementById('viderAudio').onclick = () => { morceauxAudio = []; afficherAudio(); };
+
+document.getElementById('fusionnerAudio').onclick = async () => {
+  if (morceauxAudio.length === 0) { alert("Ajoutez des musiques !"); return; }
+  const statut = document.getElementById('statutAudio');
+  const barre = document.getElementById('barreAudio');
+  barre.style.display = 'block';
+  barre.value = 50;
+  statut.textContent = "Assemblage basique en cours...";
+
+  // Concaténation directe des blobs pour éviter de saturer la RAM mobile
+  const blobs = [];
+  for (let m of morceauxAudio) {
+    blobs.push(await m.file.arrayBuffer());
+  }
+  const blobFinal = new Blob(blobs, { type: 'audio/mp3' });
+  const url = URL.createObjectURL(blobFinal);
+
+  const res = document.getElementById('resultatAudio');
+  res.innerHTML = `<audio controls src="${url}"></audio><br><a download="fusion.mp3" href="${url}"><button>Télécharger l'audio</button></a>`;
+  res.style.display = 'block';
+  barre.value = 100;
+  statut.textContent = "Audio prêt !";
 };
 
-// --- LOGIQUE PAGE 2 (VIDÉO) ---
-const inputFichiersVideo = document.getElementById('inputFichiersVideo');
-const listeVideo = document.getElementById('listeVideo');
-const statutVideo = document.getElementById('statutVideo');
-const barreVideo = document.getElementById('barreVideo');
-
-inputFichiersVideo.addEventListener('change', async e => { await traiterFichiers(e.target.files, morceauxVideo, afficherVideo); e.target.value = ''; });
-
-const zoneVideo = document.getElementById('zoneVideo');
-zoneVideo.addEventListener('dragover', e => { e.preventDefault(); zoneVideo.classList.add('over'); });
-zoneVideo.addEventListener('dragleave', () => zoneVideo.classList.remove('over'));
-zoneVideo.addEventListener('drop', async e => {
-  e.preventDefault();
-  zoneVideo.classList.remove('over');
-  await traiterFichiers(e.dataTransfer.files, morceauxVideo, afficherVideo);
+// --- VIDEO ---
+const inputVideo = document.getElementById('inputFichiersVideo');
+inputVideo.addEventListener('change', e => {
+  gererAjoutFichiers(e.target.files, morceauxVideo, afficherVideo);
+  e.target.value = '';
 });
 
 function afficherVideo() {
-  afficherListe(morceauxVideo, listeVideo, 'nombreVideo', afficherVideo);
+  const ul = document.getElementById('listeVideo');
+  ul.innerHTML = '';
+  morceauxVideo.forEach((m, i) => {
+    const li = document.createElement('li');
+    li.innerHTML = `<span>${i+1}. ${m.nom}</span> <button class="petit" onclick="morceauxVideo.splice(${i},1);afficherVideo()">✕</button>`;
+    ul.appendChild(li);
+  });
+  document.getElementById('nombreVideo').textContent = morceauxVideo.length;
 }
 
 document.getElementById('viderVideo').onclick = () => { morceauxVideo = []; afficherVideo(); };
 
-// Chargement de l'image de fond
-document.getElementById('inputImage').addEventListener('change', (e) => {
+document.getElementById('inputImage').addEventListener('change', e => {
   const file = e.target.files[0];
   if (file) {
     const reader = new FileReader();
-    reader.onload = (evt) => {
+    reader.onload = evt => {
       const img = new Image();
       img.onload = () => {
         imageFondElement = img;
@@ -265,355 +197,103 @@ document.getElementById('inputImage').addEventListener('change', (e) => {
   }
 });
 
-// Helper pour afficher les listes reordonnables
-function afficherListe(tableau, elementUl, elementCompteurId, callbackRedessiner) {
-  elementUl.innerHTML = '';
-  tableau.forEach((m, i) => {
-    const li = document.createElement('li');
-    const nom = document.createElement('span');
-    nom.textContent = (i + 1) + '. ' + m.nom;
-    const boutons = document.createElement('span');
-
-    const monter = document.createElement('button');
-    monter.className = 'petit'; monter.textContent = '↑';
-    monter.onclick = () => { if (i > 0) { [tableau[i - 1], tableau[i]] = [tableau[i], tableau[i - 1]]; callbackRedessiner(); } };
-
-    const descendre = document.createElement('button');
-    descendre.className = 'petit'; descendre.textContent = '↓';
-    descendre.onclick = () => { if (i < tableau.length - 1) { [tableau[i + 1], tableau[i]] = [tableau[i], tableau[i + 1]]; callbackRedessiner(); } };
-
-    const suppr = document.createElement('button');
-    suppr.className = 'petit'; suppr.textContent = '✕';
-    suppr.onclick = () => { tableau.splice(i, 1); callbackRedessiner(); };
-
-    boutons.append(monter, descendre, suppr);
-    li.append(nom, boutons);
-    elementUl.append(li);
-  });
-  document.getElementById(elementCompteurId).textContent = tableau.length;
-}
-
-function formaterTemps(secondes) {
-  const s = Math.floor(secondes);
-  const h = Math.floor(s / 3600);
-  const m = Math.floor((s % 3600) / 60);
-  const sec = String(s % 60).padStart(2, '0');
-  return h > 0 ? `${h}:${String(m).padStart(2, '0')}:${sec}` : `${m}:${sec}`;
-}
-
-function entete(nbFrames) {
-  const longueur = nbFrames * CANAUX * 2;
-  const v = new DataView(new ArrayBuffer(TAILLE_ENTETE));
-  const ecrire = (p, t) => { for (let i = 0; i < t.length; i++) v.setUint8(p + i, t.charCodeAt(i)); };
-  ecrire(0, 'RIFF'); v.setUint32(4, 36 + longueur, true); ecrire(8, 'WAVE');
-  ecrire(12, 'fmt '); v.setUint32(16, 16, true); v.setUint16(20, 1, true);
-  v.setUint16(22, CANAUX, true); v.setUint32(24, TAUX, true);
-  v.setUint32(28, TAUX * CANAUX * 2, true); v.setUint16(32, CANAUX * 2, true);
-  v.setUint16(34, 16, true); ecrire(36, 'data'); v.setUint32(40, longueur, true);
-  return v.buffer;
-}
-
-function versPcm(audio) {
-  const n = audio.length;
-  const g = audio.getChannelData(0);
-  const d = audio.numberOfChannels > 1 ? audio.getChannelData(1) : g;
-  const out = new Int16Array(n * 2);
-  for (let i = 0; i < n; i++) {
-    const l = Math.max(-1, Math.min(1, g[i]));
-    const r = Math.max(-1, Math.min(1, d[i]));
-    out[i * 2] = l < 0 ? l * 0x8000 : l * 0x7FFF;
-    out[i * 2 + 1] = r < 0 ? r * 0x8000 : r * 0x7FFF;
-  }
-  return out;
-}
-
-async function decoder(contexte, source) {
-  return contexte.decodeAudioData(await source.lire());
-}
-
-function libererUrls() {
-  urlsActives.forEach(u => URL.revokeObjectURL(u));
-  urlsActives = [];
-}
-
-function lienTelechargement(blob, nomFichier, texte) {
-  const url = URL.createObjectURL(blob);
-  urlsActives.push(url);
-  const lien = document.createElement('a');
-  lien.href = url;
-  lien.download = nomFichier;
-  lien.textContent = texte;
-  return lien;
-}
-
-// --- FONCTIONNALITÉ FUSION AUDIO ---
-document.getElementById('fusionnerAudio').addEventListener('click', async () => {
-  if (morceauxAudio.length === 0) { statutAudio.textContent = 'Ajoutez d\'abord des fichiers ou un ZIP.'; return; }
-
-  const btn = document.getElementById('fusionnerAudio');
-  btn.disabled = true;
-  document.getElementById('actions').style.display = 'none';
-  document.getElementById('resultatAudio').style.display = 'none';
-  document.getElementById('chapitresBloc').style.display = 'none';
-  barreAudio.style.display = 'block';
-  barreAudio.value = 0;
-  
-  const zoneParties = document.getElementById('parties');
-  zoneParties.innerHTML = '';
-  zoneParties.style.display = 'block';
-  libererUrls();
-  partiesAudio = [];
-  lignesChapitres = [];
-
-  const contexte = new (window.AudioContext || window.webkitAudioContext)({ sampleRate: TAUX });
-  const total = morceauxAudio.length;
-  const nbLots = Math.ceil(total / TAILLE_LOT);
-  let frameGlobal = 0;
-
-  try {
-    for (let lot = 0; lot < nbLots; lot++) {
-      const debut = lot * TAILLE_LOT;
-      const groupe = morceauxAudio.slice(debut, debut + TAILLE_LOT);
-      const blocs = [];
-      let framesLot = 0;
-
-      for (let k = 0; k < groupe.length; k++) {
-        const numero = debut + k + 1;
-        statutAudio.textContent = `Partie ${lot + 1}/${nbLots} : morceau ${numero}/${total} (${groupe[k].nom})`;
-        const audio = await decoder(contexte, groupe[k]);
-        const nomPropre = groupe[k].nom.replace(/\.[^.]+$/, '');
-        
-        lignesChapitres.push(`${formaterTemps(frameGlobal / TAUX)} ${nomPropre}`);
-        
-        blocs.push(versPcm(audio).buffer);
-        framesLot += audio.length;
-        frameGlobal += audio.length;
-        barreAudio.value = Math.round((numero / total) * 100);
-        await pause();
-      }
-
-      const blob = new Blob([entete(framesLot), ...blocs], { type: 'audio/wav' });
-      const nom = `partie-${String(lot + 1).padStart(2, '0')}.wav`;
-      partiesAudio.push({ nom, blob, frames: framesLot });
-
-      const bloc = document.createElement('div');
-      bloc.appendChild(lienTelechargement(blob, nom, 'Télécharger ' + nom));
-      const info = document.createElement('span');
-      info.textContent = ` (${Math.round(framesLot / TAUX / 60)} min)`;
-      bloc.appendChild(info);
-      zoneParties.appendChild(bloc);
-    }
-
-    barreAudio.value = 100;
-    statutAudio.textContent = `${nbLots} partie(s) prête(s), environ ${Math.round(frameGlobal / TAUX / 60)} minutes au total.`;
-    document.getElementById('chapitres').value = lignesChapitres.join('\n');
-    document.getElementById('chapitresBloc').style.display = 'block';
-    document.getElementById('actions').style.display = 'block';
-  } catch (err) {
-    statutAudio.textContent = 'Erreur : ' + err.message;
-  } finally {
-    btn.disabled = false;
-    contexte.close();
-  }
-});
-
-document.getElementById('unParUn').addEventListener('click', () => {
-  document.getElementById('parties').querySelectorAll('a').forEach(a => a.click());
-  statutAudio.textContent = 'Téléchargements lancés.';
-});
-
-document.getElementById('toutTelecharger').addEventListener('click', async () => {
-  const liens = document.getElementById('parties').querySelectorAll('a');
-  for (const a of liens) {
-    a.click();
-    await new Promise(r => setTimeout(r, 1500));
-  }
-  statutAudio.textContent = 'Téléchargements lancés.';
-});
-
-document.getElementById('assembler').addEventListener('click', () => {
-  if (partiesAudio.length === 0) return;
-  statutAudio.textContent = 'Assemblage global en cours...';
-
-  const totalFrames = partiesAudio.reduce((a, p) => a + p.frames, 0);
-  const donnees = partiesAudio.map(p => p.blob.slice(TAILLE_ENTETE));
-  const complet = new Blob([entete(totalFrames), ...donnees], { type: 'audio/wav' });
-  const minutes = Math.round(totalFrames / TAUX / 60);
-
-  const carte = document.createElement('div');
-  const titre = document.createElement('strong');
-  titre.textContent = `Audio complet (${minutes} min, ${partiesAudio.length} parties)`;
-  const lecteur = document.createElement('audio');
-  lecteur.controls = true;
-  lecteur.preload = 'metadata';
-  const url = URL.createObjectURL(complet);
-  urlsActives.push(url);
-  lecteur.src = url;
-  const lien = document.createElement('a');
-  lien.href = url;
-  lien.download = 'musique-complete.wav';
-  lien.textContent = 'Télécharger musique-complete.wav';
-  carte.append(titre, document.createElement('br'), lecteur, document.createElement('br'), lien);
-
-  const res = document.getElementById('resultatAudio');
-  res.innerHTML = '';
-  res.appendChild(carte);
-  res.style.display = 'block';
-  statutAudio.textContent = 'Audio complet prêt : écoutez-le ou téléchargez-le.';
-  carte.scrollIntoView({ behavior: 'smooth' });
-});
-
-document.getElementById('copier').onclick = () => {
-  const t = document.getElementById('chapitres');
-  navigator.clipboard.writeText(t.value).then(
-    () => { statutAudio.textContent = 'Timestamps copiés.'; },
-    () => { t.select(); document.execCommand('copy'); statutAudio.textContent = 'Timestamps copiés.'; }
-  );
-};
-
-// --- FONCTIONNALITÉ GÉNÉRATEUR VIDÉO ---
-document.getElementById('genererVideo').addEventListener('click', async () => {
-  if (morceauxVideo.length === 0) {
-    alert("Veuillez ajouter au moins une musique MP3 !");
-    return;
-  }
+document.getElementById('genererVideo').onclick = async () => {
+  if (morceauxVideo.length === 0) { alert("Ajoutez des musiques !"); return; }
+  if (!imageFondElement) { alert("Choisissez une image de fond !"); return; }
 
   const btn = document.getElementById('genererVideo');
   btn.disabled = true;
-  barreVideo.style.display = 'block';
-  barreVideo.value = 0;
-  statutVideo.textContent = "Décodage et assemblage de l'audio...";
-  document.getElementById('resultatVideo').style.display = 'none';
+  const statut = document.getElementById('statutVideo');
+  const barre = document.getElementById('barreVideo');
+  barre.style.display = 'block';
+  barre.value = 10;
+  statut.textContent = "Préparation de la vidéo...";
 
   try {
-    const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
-    const decodedBuffers = [];
+    // Utilisation d'un élément Audio HTML classique pour économiser la mémoire mobile
+    const audioList = morceauxVideo.map(m => URL.createObjectURL(m.file));
+    let currentIndex = 0;
+    
+    const audioElement = new Audio(audioList[currentIndex]);
+    audioElement.crossOrigin = "anonymous";
 
-    // 1. Décodage de chaque MP3
-    for (let i = 0; i < morceauxVideo.length; i++) {
-      statutVideo.textContent = `Décodage piste audio ${i + 1}/${morceauxVideo.length}...`;
-      const buffer = await decoder(audioCtx, morceauxVideo[i]);
-      decodedBuffers.push(buffer);
-      barreVideo.value = Math.round(((i + 1) / morceauxVideo.length) * 40);
-      await pause();
-    }
-
-    // 2. Fusion dans un AudioBuffer unique
-    const dureeTotaleSec = decodedBuffers.reduce((acc, b) => acc + b.duration, 0);
-    const totalSamples = Math.ceil(dureeTotaleSec * audioCtx.sampleRate);
-    const audioCompletBuffer = audioCtx.createBuffer(CANAUX, totalSamples, audioCtx.sampleRate);
-
-    let offset = 0;
-    for (const buf of decodedBuffers) {
-      for (let ch = 0; ch < CANAUX; ch++) {
-        const canalData = ch < buf.numberOfChannels ? buf.getChannelData(ch) : buf.getChannelData(0);
-        audioCompletBuffer.getChannelData(ch).set(canalData, offset);
-      }
-      offset += buf.length;
-    }
-
-    statutVideo.textContent = "Préparation de l'enregistrement de la vidéo...";
-    barreVideo.value = 50;
-
-    // 3. Préparation du Web Audio Source Node & Destination
-    const mediaStreamDest = audioCtx.createMediaStreamDestination();
-    const sourceNode = audioCtx.createBufferSource();
-    sourceNode.buffer = audioCompletBuffer;
-    sourceNode.connect(mediaStreamDest);
-
-    // 4. Préparation du Canvas Vidéo (1280x720 HD)
     const canvas = document.createElement('canvas');
-    canvas.width = 1280;
-    canvas.height = 720;
+    canvas.width = 640; // Réduit en 640x360 pour éviter les plantages sur téléphone
+    canvas.height = 360;
     const ctx = canvas.getContext('2d');
 
-    function dessinerFond() {
-      ctx.fillStyle = '#111827';
+    function dessiner() {
+      ctx.fillStyle = '#000';
       ctx.fillRect(0, 0, canvas.width, canvas.height);
-
       if (imageFondElement) {
-        const ratio = Math.min(canvas.width / imageFondElement.width, canvas.height / imageFondElement.height);
-        const nw = imageFondElement.width * ratio;
-        const nh = imageFondElement.height * ratio;
-        const nx = (canvas.width - nw) / 2;
-        const ny = (canvas.height - nh) / 2;
-        ctx.drawImage(imageFondElement, nx, ny, nw, nh);
-      } else {
-        // Fond par défaut avec du texte si aucune image fournie
-        ctx.fillStyle = '#ffffff';
-        ctx.font = 'bold 40px Arial';
-        ctx.textAlign = 'center';
-        ctx.fillText("Studio Vidéo Audio", canvas.width / 2, canvas.height / 2);
+        ctx.drawImage(imageFondElement, 0, 0, canvas.width, canvas.height);
       }
     }
+    dessiner();
 
-    dessinerFond();
+    const canvasStream = canvas.captureStream(15); // 15 FPS pour alléger au maximum
+    const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+    const sourceNode = audioCtx.createMediaElementSource(audioElement);
+    const destinationNode = audioCtx.createMediaStreamDestination();
+    sourceNode.connect(destinationNode);
+    sourceNode.connect(audioCtx.destination);
 
-    // Capture de la vidéo à 30 FPS
-    const canvasStream = canvas.captureStream(30);
     const combinedStream = new MediaStream([
       ...canvasStream.getVideoTracks(),
-      ...mediaStreamDest.stream.getAudioTracks()
+      ...destinationNode.stream.getAudioTracks()
     ]);
 
-    // Format vidéo supporté
-    let optionsFormat = { mimeType: 'video/webm;codecs=vp9,opus' };
-    if (!MediaRecorder.isTypeSupported(optionsFormat.mimeType)) {
-      optionsFormat = { mimeType: 'video/webm' };
-    }
-
-    const recorder = new MediaRecorder(combinedStream, optionsFormat);
+    const recorder = new MediaRecorder(combinedStream, { mimeType: 'video/webm' });
     const chunks = [];
-
-    recorder.ondataavailable = e => { if (e.data.size > 0) chunks.push(e.data); };
+    recorder.ondataavailable = e => chunks.push(e.data);
 
     recorder.onstop = () => {
-      const videoBlob = new Blob(chunks, { type: recorder.mimeType || 'video/webm' });
-      const videoUrl = URL.createObjectURL(videoBlob);
-      urlsActives.push(videoUrl);
-
+      const blob = new Blob(chunks, { type: 'video/webm' });
+      const url = URL.createObjectURL(blob);
       const lecteur = document.getElementById('lecteurVideo');
-      lecteur.src = videoUrl;
-
-      const lienDownload = document.getElementById('lienTelechargerVideo');
-      lienDownload.href = videoUrl;
-      lienDownload.download = 'video-audio-fond.webm';
+      lecteur.src = url;
+      const lien = document.getElementById('lienTelechargerVideo');
+      lien.href = url;
+      lien.download = 'video-finale.webm';
 
       document.getElementById('resultatVideo').style.display = 'block';
-      statutVideo.textContent = "Vidéo générée avec succès !";
-      barreVideo.value = 100;
+      statut.textContent = "Vidéo générée avec succès !";
+      barre.value = 100;
       btn.disabled = false;
-      audioCtx.close();
     };
 
-    // Lancement du rendu et de l'enregistrement accéléré
-    recorder.start();
-    sourceNode.start(0);
-
-    const tempsDebut = Date.now();
-    const updateProgression = () => {
-      const tempsEcoule = audioCtx.currentTime;
-      const pct = 50 + Math.round((tempsEcoule / dureeTotaleSec) * 50);
-      barreVideo.value = Math.min(100, pct);
-      statutVideo.textContent = `Encodage vidéo en cours : ${formaterTemps(tempsEcoule)} / ${formaterTemps(dureeTotaleSec)}`;
-
-      dessinerFond();
-
-      if (tempsEcoule < dureeTotaleSec) {
-        requestAnimationFrame(updateProgression);
+    audioElement.onended = () => {
+      currentIndex++;
+      if (currentIndex < audioList.length) {
+        audioElement.src = audioList[currentIndex];
+        audioElement.play();
       } else {
-        setTimeout(() => recorder.stop(), 500);
+        recorder.stop();
+        audioCtx.close();
       }
     };
 
-    requestAnimationFrame(updateProgression);
+    barre.value = 40;
+    statut.textContent = "Enregistrement de la vidéo en cours...";
+    
+    recorder.start();
+    await audioCtx.resume();
+    audioElement.play();
+
+    // Boucle d'animation pour rafraîchir le canvas
+    function animer() {
+      if (!audioElement.ended && !audioElement.paused) {
+        dessiner();
+        requestAnimationFrame(animer);
+      }
+    }
+    animer();
 
   } catch (err) {
-    console.error(err);
-    statutVideo.textContent = "Erreur lors de la génération vidéo : " + err.message;
+    alert("Erreur : " + err.message);
     btn.disabled = false;
   }
-});
+};
 </script>
 </body>
 </html>
