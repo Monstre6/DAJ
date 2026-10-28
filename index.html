@@ -3,65 +3,130 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Fusion Audio</title>
+<title>Studio Audio & Vidéo</title>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
 <style>
-  body { font-family: Arial, sans-serif; max-width: 800px; margin: 30px auto; padding: 0 20px; color: #1e3a8a; }
-  h2, h3 { color: #1e3a8a; }
-  #zone { border: 2px dashed #2a7ae2; border-radius: 8px; padding: 30px; text-align: center; background: #f0f7ff; }
-  #zone.over { background: #d6eaff; }
-  button { padding: 8px 14px; margin: 4px; cursor: pointer; background: #2a7ae2; color: #fff; border: none; border-radius: 4px; }
+  body { font-family: Arial, sans-serif; max-width: 900px; margin: 0 auto; padding: 20px; color: #1e3a8a; background-color: #f8fafc; }
+  
+  /* Navbar styling */
+  nav { display: flex; gap: 10px; background: #1e3a8a; padding: 10px 15px; border-radius: 8px; margin-bottom: 25px; }
+  nav button { background: transparent; color: #fff; border: none; padding: 10px 16px; font-size: 16px; font-weight: bold; cursor: pointer; border-radius: 6px; }
+  nav button:hover { background: rgba(255, 255, 255, 0.15); }
+  nav button.active { background: #2a7ae2; color: #fff; }
+
+  .page { display: none; }
+  .page.active { display: block; }
+
+  h2, h3 { color: #1e3a8a; margin-top: 0; }
+  .zone-drop { border: 2px dashed #2a7ae2; border-radius: 8px; padding: 25px; text-align: center; background: #f0f7ff; margin-bottom: 15px; }
+  .zone-drop.over { background: #d6eaff; }
+
+  button { padding: 9px 16px; margin: 4px; cursor: pointer; background: #2a7ae2; color: #fff; border: none; border-radius: 6px; font-weight: 500; }
   button:hover { background: #1e5fc0; }
   button:disabled { background: #9db8dd; cursor: wait; }
-  button.petit { background: #e5edf9; color: #1e3a8a; padding: 4px 8px; }
-  ul { list-style: none; padding: 0; max-height: 300px; overflow-y: auto; border: 1px solid #dbe7f7; border-radius: 6px; }
-  li { padding: 6px 8px; border-bottom: 1px solid #dbe7f7; display: flex; justify-content: space-between; align-items: center; gap: 8px; }
-  #statut { margin: 15px 0; font-weight: bold; }
-  progress { width: 100%; height: 14px; display: none; }
-  textarea { width: 100%; height: 220px; margin-top: 10px; font-family: monospace; box-sizing: border-box; }
+  button.petit { background: #e5edf9; color: #1e3a8a; padding: 4px 10px; font-size: 13px; }
+  
+  ul { list-style: none; padding: 0; max-height: 250px; overflow-y: auto; border: 1px solid #dbe7f7; border-radius: 6px; background: #fff; }
+  li { padding: 8px 12px; border-bottom: 1px solid #dbe7f7; display: flex; justify-content: space-between; align-items: center; gap: 8px; }
+  
+  .statut { margin: 15px 0; font-weight: bold; color: #2a7ae2; }
+  progress { width: 100%; height: 16px; display: none; margin: 10px 0; }
+  textarea { width: 100%; height: 180px; margin-top: 10px; font-family: monospace; box-sizing: border-box; }
   input[type=file] { display: none; }
+  
   #parties { display: none; margin-top: 15px; }
   #parties div { margin: 8px 0; }
-  #actions { display: none; margin-top: 15px; padding: 10px; border: 1px solid #dbe7f7; border-radius: 6px; }
-  #resultat { margin-top: 15px; }
-  #resultat audio { width: 100%; margin: 6px 0; }
+  #actions { display: none; margin-top: 15px; padding: 12px; border: 1px solid #dbe7f7; border-radius: 6px; background: #fff; }
+  .resultat-container { margin-top: 20px; background: #fff; padding: 15px; border-radius: 8px; border: 1px solid #dbe7f7; }
+  audio, video { width: 100%; margin-top: 10px; border-radius: 6px; }
+
+  /* Section spécifiques vidéo */
+  .preview-img { max-width: 100%; max-height: 200px; border-radius: 6px; margin-top: 10px; display: none; object-fit: contain; }
+  .option-group { background: #fff; padding: 15px; border-radius: 8px; border: 1px solid #dbe7f7; margin-bottom: 15px; }
 </style>
 </head>
 <body>
-<h2>Fusion de fichiers audio</h2>
 
-<div id="zone">
-  Glissez vos musiques ou vos fichiers ZIP ici<br><br>
-  <button id="btnFichiers">Choisir des fichiers ou un ZIP</button>
-  <button id="btnDossier">Choisir un dossier</button>
-  <input type="file" id="inputFichiers" multiple accept="audio/*,.zip">
-  <input type="file" id="inputDossier" webkitdirectory>
+<!-- Navigation Bar -->
+<nav>
+  <button id="tabAudio" class="active" onclick="changerOnglet('pageAudio', 'tabAudio')">🎵 Fusion Audio</button>
+  <button id="tabVideo" onclick="changerOnglet('pageVideo', 'tabVideo')">🎬 Créateur Vidéo</button>
+</nav>
+
+<!-- PAGE 1 : FUSION AUDIO -->
+<div id="pageAudio" class="page active">
+  <h2>Fusion de fichiers audio</h2>
+
+  <div class="zone-drop" id="zoneAudio">
+    Glissez vos musiques ou vos fichiers ZIP ici<br><br>
+    <button onclick="document.getElementById('inputFichiersAudio').click()">Choisir des fichiers ou un ZIP</button>
+    <button onclick="document.getElementById('inputDossierAudio').click()">Choisir un dossier</button>
+    <input type="file" id="inputFichiersAudio" multiple accept="audio/*,.zip">
+    <input type="file" id="inputDossierAudio" webkitdirectory>
+  </div>
+
+  <p>Morceaux ajoutés : <span id="nombreAudio">0</span></p>
+  <ul id="listeAudio"></ul>
+  <button id="viderAudio" class="petit">Tout effacer</button>
+  <br><br>
+  <button id="fusionnerAudio">Créer les parties et timestamps</button>
+
+  <progress id="barreAudio" max="100" value="0"></progress>
+  <div id="statutAudio" class="statut"></div>
+
+  <div id="parties"></div>
+
+  <div id="actions">
+    <strong>Que voulez-vous faire avec les parties ?</strong><br>
+    <button id="unParUn">Télécharger un par un</button>
+    <button id="toutTelecharger">Télécharger toutes les parties d'un coup</button>
+    <button id="assembler">Assembler les parties en un seul audio</button>
+  </div>
+
+  <div id="resultatAudio" class="resultat-container" style="display:none;"></div>
+
+  <div id="chapitresBloc" style="display:none; margin-top:20px;">
+    <h3>Timestamps pour YouTube</h3>
+    <textarea id="chapitres" readonly></textarea>
+    <button id="copier">Copier les timestamps</button>
+  </div>
 </div>
 
-<p>Morceaux ajoutés : <span id="nombre">0</span></p>
-<ul id="liste"></ul>
-<button id="vider" class="petit">Tout effacer</button>
-<br>
-<button id="fusionner">Créer les parties et timestamps</button>
+<!-- PAGE 2 : CRÉATEUR VIDÉO -->
+<div id="pageVideo" class="page">
+  <h2>Créer une vidéo à partir d'MP3 et d'une image</h2>
 
-<progress id="barre" max="100" value="0"></progress>
-<div id="statut"></div>
+  <div class="option-group">
+    <h3>1. Image d'arrière-plan</h3>
+    <button onclick="document.getElementById('inputImage').click()">Sélectionner une image de fond</button>
+    <input type="file" id="inputImage" accept="image/*">
+    <br>
+    <img id="apercuImage" class="preview-img" alt="Aperçu de l'image de fond">
+  </div>
 
-<div id="parties"></div>
+  <div class="option-group">
+    <h3>2. Ordre des pistes audio MP3</h3>
+    <div class="zone-drop" id="zoneVideo">
+      Glissez vos musiques MP3 ici<br><br>
+      <button onclick="document.getElementById('inputFichiersVideo').click()">Ajouter des musiques</button>
+      <input type="file" id="inputFichiersVideo" multiple accept="audio/*,.zip">
+    </div>
+    <p>Morceaux ajoutés : <span id="nombreVideo">0</span></p>
+    <ul id="listeVideo"></ul>
+    <button id="viderVideo" class="petit">Effacer les musiques</button>
+  </div>
 
-<div id="actions">
-  <strong>Que voulez-vous faire avec les parties ?</strong><br>
-  <button id="unParUn">Télécharger un par un</button>
-  <button id="toutTelecharger">Télécharger toutes les parties d'un coup</button>
-  <button id="assembler">Assembler les parties en un seul audio</button>
-</div>
+  <button id="genererVideo" style="font-size: 16px; padding: 12px 20px;">🎥 Générer la vidéo</button>
 
-<div id="resultat"></div>
+  <progress id="barreVideo" max="100" value="0"></progress>
+  <div id="statutVideo" class="statut"></div>
 
-<div id="chapitresBloc" style="display:none">
-  <h3>Timestamps pour YouTube</h3>
-  <textarea id="chapitres" readonly></textarea>
-  <button id="copier">Copier les timestamps</button>
+  <div id="resultatVideo" class="resultat-container" style="display:none;">
+    <h3>Résultat de la vidéo</h3>
+    <video id="lecteurVideo" controls></video>
+    <br><br>
+    <a id="lienTelechargerVideo" style="display:inline-block;"><button>💾 Télécharger la vidéo</button></a>
+  </div>
 </div>
 
 <script>
@@ -71,40 +136,32 @@ const TAILLE_LOT = 10;
 const TAILLE_ENTETE = 44;
 const EXT = /\.(mp3|wav|m4a|ogg|flac|aac|opus)$/i;
 
-let morceaux = [];   
-let parties = [];    
-let lignes = [];     
+let morceauxAudio = [];   
+let morceauxVideo = [];
+let partiesAudio = [];    
+let lignesChapitres = [];     
 let urlsActives = [];
+let imageFondElement = null;
 
-const zone = document.getElementById('zone');
-const liste = document.getElementById('liste');
-const statut = document.getElementById('statut');
-const barre = document.getElementById('barre');
-const inputFichiers = document.getElementById('inputFichiers');
-const inputDossier = document.getElementById('inputDossier');
-const boutonFusion = document.getElementById('fusionner');
-const zoneParties = document.getElementById('parties');
-const actions = document.getElementById('actions');
-const resultat = document.getElementById('resultat');
-
-document.getElementById('btnFichiers').onclick = () => inputFichiers.click();
-document.getElementById('btnDossier').onclick = () => inputDossier.click();
+// Gestions des Onglets
+function changerOnglet(pageId, tabId) {
+  document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
+  document.querySelectorAll('nav button').forEach(b => b.classList.remove('active'));
+  document.getElementById(pageId).classList.add('active');
+  document.getElementById(tabId).classList.add('active');
+}
 
 const pause = () => new Promise(r => setTimeout(r, 0));
-
 function nomBase(chemin) { return chemin.split('/').pop(); }
-
 function estAudio(nom) {
   const base = nomBase(nom);
   return EXT.test(base) && !nom.includes('__MACOSX') && !base.startsWith('.');
 }
-
 function trier(tab) {
   tab.sort((a, b) => a.nom.localeCompare(b.nom, 'fr', { numeric: true }));
 }
 
 async function lireZip(fichier) {
-  statut.textContent = `Lecture du ZIP : ${fichier.name}...`;
   const zip = await JSZip.loadAsync(fichier);
   const sortie = [];
   for (const entree of Object.values(zip.files)) {
@@ -114,9 +171,10 @@ async function lireZip(fichier) {
   return sortie;
 }
 
-async function ajouter(liste_fichiers) {
+// --- LOGIQUE COMMUNE D'AJOUT DE FICHIERS ---
+async function traiterFichiers(fichiers, tableauCible, callbackAffichage) {
   const sources = [];
-  for (const f of Array.from(liste_fichiers)) {
+  for (const f of Array.from(fichiers)) {
     try {
       if (/\.zip$/i.test(f.name)) {
         sources.push(...await lireZip(f));
@@ -124,40 +182,93 @@ async function ajouter(liste_fichiers) {
         sources.push({ nom: f.name, lire: () => f.arrayBuffer() });
       }
     } catch (err) {
-      statut.textContent = `Impossible de lire ${f.name} : ${err.message}`;
+      console.error(err);
     }
   }
   trier(sources);
-  morceaux.push(...sources);
-  afficher();
-  statut.textContent = `${sources.length} morceau(x) ajouté(s).`;
+  tableauCible.push(...sources);
+  callbackAffichage();
 }
 
-inputFichiers.addEventListener('change', async e => { await ajouter(e.target.files); e.target.value = ''; });
-inputDossier.addEventListener('change', async e => { await ajouter(e.target.files); e.target.value = ''; });
-zone.addEventListener('dragover', e => { e.preventDefault(); zone.classList.add('over'); });
-zone.addEventListener('dragleave', () => zone.classList.remove('over'));
-zone.addEventListener('drop', async e => {
+// --- LOGIQUE PAGE 1 (AUDIO) ---
+const inputFichiersAudio = document.getElementById('inputFichiersAudio');
+const inputDossierAudio = document.getElementById('inputDossierAudio');
+const listeAudio = document.getElementById('listeAudio');
+const statutAudio = document.getElementById('statutAudio');
+const barreAudio = document.getElementById('barreAudio');
+
+inputFichiersAudio.addEventListener('change', async e => { await traiterFichiers(e.target.files, morceauxAudio, afficherAudio); e.target.value = ''; });
+inputDossierAudio.addEventListener('change', async e => { await traiterFichiers(e.target.files, morceauxAudio, afficherAudio); e.target.value = ''; });
+
+const zoneAudio = document.getElementById('zoneAudio');
+zoneAudio.addEventListener('dragover', e => { e.preventDefault(); zoneAudio.classList.add('over'); });
+zoneAudio.addEventListener('dragleave', () => zoneAudio.classList.remove('over'));
+zoneAudio.addEventListener('drop', async e => {
   e.preventDefault();
-  zone.classList.remove('over');
-  await ajouter(e.dataTransfer.files);
+  zoneAudio.classList.remove('over');
+  await traiterFichiers(e.dataTransfer.files, morceauxAudio, afficherAudio);
 });
 
-document.getElementById('vider').onclick = () => { 
-  morceaux = []; 
-  parties = [];
-  lignes = [];
-  afficher(); 
-  statut.textContent = 'Tout a été effacé.';
-  zoneParties.style.display = 'none';
-  actions.style.display = 'none';
-  resultat.innerHTML = '';
+function afficherAudio() {
+  afficherListe(morceauxAudio, listeAudio, 'nombreAudio', afficherAudio);
+}
+
+document.getElementById('viderAudio').onclick = () => { 
+  morceauxAudio = []; 
+  afficherAudio(); 
+  statutAudio.textContent = 'Tout a été effacé.';
+  document.getElementById('parties').style.display = 'none';
+  document.getElementById('actions').style.display = 'none';
+  document.getElementById('resultatAudio').style.display = 'none';
   document.getElementById('chapitresBloc').style.display = 'none';
 };
 
-function afficher() {
-  liste.innerHTML = '';
-  morceaux.forEach((m, i) => {
+// --- LOGIQUE PAGE 2 (VIDÉO) ---
+const inputFichiersVideo = document.getElementById('inputFichiersVideo');
+const listeVideo = document.getElementById('listeVideo');
+const statutVideo = document.getElementById('statutVideo');
+const barreVideo = document.getElementById('barreVideo');
+
+inputFichiersVideo.addEventListener('change', async e => { await traiterFichiers(e.target.files, morceauxVideo, afficherVideo); e.target.value = ''; });
+
+const zoneVideo = document.getElementById('zoneVideo');
+zoneVideo.addEventListener('dragover', e => { e.preventDefault(); zoneVideo.classList.add('over'); });
+zoneVideo.addEventListener('dragleave', () => zoneVideo.classList.remove('over'));
+zoneVideo.addEventListener('drop', async e => {
+  e.preventDefault();
+  zoneVideo.classList.remove('over');
+  await traiterFichiers(e.dataTransfer.files, morceauxVideo, afficherVideo);
+});
+
+function afficherVideo() {
+  afficherListe(morceauxVideo, listeVideo, 'nombreVideo', afficherVideo);
+}
+
+document.getElementById('viderVideo').onclick = () => { morceauxVideo = []; afficherVideo(); };
+
+// Chargement de l'image de fond
+document.getElementById('inputImage').addEventListener('change', (e) => {
+  const file = e.target.files[0];
+  if (file) {
+    const reader = new FileReader();
+    reader.onload = (evt) => {
+      const img = new Image();
+      img.onload = () => {
+        imageFondElement = img;
+        const apercu = document.getElementById('apercuImage');
+        apercu.src = evt.target.result;
+        apercu.style.display = 'block';
+      };
+      img.src = evt.target.result;
+    };
+    reader.readAsDataURL(file);
+  }
+});
+
+// Helper pour afficher les listes reordonnables
+function afficherListe(tableau, elementUl, elementCompteurId, callbackRedessiner) {
+  elementUl.innerHTML = '';
+  tableau.forEach((m, i) => {
     const li = document.createElement('li');
     const nom = document.createElement('span');
     nom.textContent = (i + 1) + '. ' + m.nom;
@@ -165,21 +276,21 @@ function afficher() {
 
     const monter = document.createElement('button');
     monter.className = 'petit'; monter.textContent = '↑';
-    monter.onclick = () => { if (i > 0) { [morceaux[i - 1], morceaux[i]] = [morceaux[i], morceaux[i - 1]]; afficher(); } };
+    monter.onclick = () => { if (i > 0) { [tableau[i - 1], tableau[i]] = [tableau[i], tableau[i - 1]]; callbackRedessiner(); } };
 
     const descendre = document.createElement('button');
     descendre.className = 'petit'; descendre.textContent = '↓';
-    descendre.onclick = () => { if (i < morceaux.length - 1) { [morceaux[i + 1], morceaux[i]] = [morceaux[i], morceaux[i + 1]]; afficher(); } };
+    descendre.onclick = () => { if (i < tableau.length - 1) { [tableau[i + 1], tableau[i]] = [tableau[i], tableau[i + 1]]; callbackRedessiner(); } };
 
     const suppr = document.createElement('button');
     suppr.className = 'petit'; suppr.textContent = '✕';
-    suppr.onclick = () => { morceaux.splice(i, 1); afficher(); };
+    suppr.onclick = () => { tableau.splice(i, 1); callbackRedessiner(); };
 
     boutons.append(monter, descendre, suppr);
     li.append(nom, boutons);
-    liste.append(li);
+    elementUl.append(li);
   });
-  document.getElementById('nombre').textContent = morceaux.length;
+  document.getElementById(elementCompteurId).textContent = tableau.length;
 }
 
 function formaterTemps(secondes) {
@@ -235,52 +346,55 @@ function lienTelechargement(blob, nomFichier, texte) {
   return lien;
 }
 
-boutonFusion.addEventListener('click', async () => {
-  if (morceaux.length === 0) { statut.textContent = 'Ajoutez d\'abord des fichiers ou un ZIP.'; return; }
+// --- FONCTIONNALITÉ FUSION AUDIO ---
+document.getElementById('fusionnerAudio').addEventListener('click', async () => {
+  if (morceauxAudio.length === 0) { statutAudio.textContent = 'Ajoutez d\'abord des fichiers ou un ZIP.'; return; }
 
-  boutonFusion.disabled = true;
-  actions.style.display = 'none';
-  resultat.innerHTML = '';
+  const btn = document.getElementById('fusionnerAudio');
+  btn.disabled = true;
+  document.getElementById('actions').style.display = 'none';
+  document.getElementById('resultatAudio').style.display = 'none';
   document.getElementById('chapitresBloc').style.display = 'none';
-  barre.style.display = 'block';
-  barre.value = 0;
+  barreAudio.style.display = 'block';
+  barreAudio.value = 0;
+  
+  const zoneParties = document.getElementById('parties');
   zoneParties.innerHTML = '';
   zoneParties.style.display = 'block';
   libererUrls();
-  parties = [];
-  lignes = [];
+  partiesAudio = [];
+  lignesChapitres = [];
 
   const contexte = new (window.AudioContext || window.webkitAudioContext)({ sampleRate: TAUX });
-  const total = morceaux.length;
+  const total = morceauxAudio.length;
   const nbLots = Math.ceil(total / TAILLE_LOT);
   let frameGlobal = 0;
 
   try {
     for (let lot = 0; lot < nbLots; lot++) {
       const debut = lot * TAILLE_LOT;
-      const groupe = morceaux.slice(debut, debut + TAILLE_LOT);
+      const groupe = morceauxAudio.slice(debut, debut + TAILLE_LOT);
       const blocs = [];
       let framesLot = 0;
 
       for (let k = 0; k < groupe.length; k++) {
         const numero = debut + k + 1;
-        statut.textContent = `Partie ${lot + 1}/${nbLots} : morceau ${numero}/${total} (${groupe[k].nom})`;
+        statutAudio.textContent = `Partie ${lot + 1}/${nbLots} : morceau ${numero}/${total} (${groupe[k].nom})`;
         const audio = await decoder(contexte, groupe[k]);
         const nomPropre = groupe[k].nom.replace(/\.[^.]+$/, '');
         
-        // Timestamp calculé de manière globale et continue depuis 0:00
-        lignes.push(`${formaterTemps(frameGlobal / TAUX)} ${nomPropre}`);
+        lignesChapitres.push(`${formaterTemps(frameGlobal / TAUX)} ${nomPropre}`);
         
         blocs.push(versPcm(audio).buffer);
         framesLot += audio.length;
         frameGlobal += audio.length;
-        barre.value = Math.round((numero / total) * 100);
+        barreAudio.value = Math.round((numero / total) * 100);
         await pause();
       }
 
       const blob = new Blob([entete(framesLot), ...blocs], { type: 'audio/wav' });
       const nom = `partie-${String(lot + 1).padStart(2, '0')}.wav`;
-      parties.push({ nom, blob, frames: framesLot });
+      partiesAudio.push({ nom, blob, frames: framesLot });
 
       const bloc = document.createElement('div');
       bloc.appendChild(lienTelechargement(blob, nom, 'Télécharger ' + nom));
@@ -290,45 +404,45 @@ boutonFusion.addEventListener('click', async () => {
       zoneParties.appendChild(bloc);
     }
 
-    barre.value = 100;
-    statut.textContent = `${nbLots} partie(s) prête(s), environ ${Math.round(frameGlobal / TAUX / 60)} minutes au total.`;
-    document.getElementById('chapitres').value = lignes.join('\n');
+    barreAudio.value = 100;
+    statutAudio.textContent = `${nbLots} partie(s) prête(s), environ ${Math.round(frameGlobal / TAUX / 60)} minutes au total.`;
+    document.getElementById('chapitres').value = lignesChapitres.join('\n');
     document.getElementById('chapitresBloc').style.display = 'block';
-    actions.style.display = 'block';
+    document.getElementById('actions').style.display = 'block';
   } catch (err) {
-    statut.textContent = 'Erreur : ' + err.message + ' (essayez moins de morceaux à la fois)';
+    statutAudio.textContent = 'Erreur : ' + err.message;
   } finally {
-    boutonFusion.disabled = false;
+    btn.disabled = false;
     contexte.close();
   }
 });
 
 document.getElementById('unParUn').addEventListener('click', () => {
-  zoneParties.querySelectorAll('a').forEach(a => a.click());
-  statut.textContent = 'Téléchargements lancés.';
+  document.getElementById('parties').querySelectorAll('a').forEach(a => a.click());
+  statutAudio.textContent = 'Téléchargements lancés.';
 });
 
 document.getElementById('toutTelecharger').addEventListener('click', async () => {
-  const liens = zoneParties.querySelectorAll('a');
+  const liens = document.getElementById('parties').querySelectorAll('a');
   for (const a of liens) {
     a.click();
     await new Promise(r => setTimeout(r, 1500));
   }
-  statut.textContent = 'Téléchargements lancés.';
+  statutAudio.textContent = 'Téléchargements lancés.';
 });
 
 document.getElementById('assembler').addEventListener('click', () => {
-  if (parties.length === 0) return;
-  statut.textContent = 'Assemblage global en cours...';
+  if (partiesAudio.length === 0) return;
+  statutAudio.textContent = 'Assemblage global en cours...';
 
-  const totalFrames = parties.reduce((a, p) => a + p.frames, 0);
-  const donnees = parties.map(p => p.blob.slice(TAILLE_ENTETE));
+  const totalFrames = partiesAudio.reduce((a, p) => a + p.frames, 0);
+  const donnees = partiesAudio.map(p => p.blob.slice(TAILLE_ENTETE));
   const complet = new Blob([entete(totalFrames), ...donnees], { type: 'audio/wav' });
   const minutes = Math.round(totalFrames / TAUX / 60);
 
   const carte = document.createElement('div');
   const titre = document.createElement('strong');
-  titre.textContent = `Audio complet (${minutes} min, ${parties.length} parties)`;
+  titre.textContent = `Audio complet (${minutes} min, ${partiesAudio.length} parties)`;
   const lecteur = document.createElement('audio');
   lecteur.controls = true;
   lecteur.preload = 'metadata';
@@ -341,19 +455,165 @@ document.getElementById('assembler').addEventListener('click', () => {
   lien.textContent = 'Télécharger musique-complete.wav';
   carte.append(titre, document.createElement('br'), lecteur, document.createElement('br'), lien);
 
-  resultat.innerHTML = '';
-  resultat.appendChild(carte);
-  statut.textContent = 'Audio complet prêt : écoutez-le ou téléchargez-le.';
+  const res = document.getElementById('resultatAudio');
+  res.innerHTML = '';
+  res.appendChild(carte);
+  res.style.display = 'block';
+  statutAudio.textContent = 'Audio complet prêt : écoutez-le ou téléchargez-le.';
   carte.scrollIntoView({ behavior: 'smooth' });
 });
 
 document.getElementById('copier').onclick = () => {
   const t = document.getElementById('chapitres');
   navigator.clipboard.writeText(t.value).then(
-    () => { statut.textContent = 'Timestamps copiés.'; },
-    () => { t.select(); document.execCommand('copy'); statut.textContent = 'Timestamps copiés.'; }
+    () => { statutAudio.textContent = 'Timestamps copiés.'; },
+    () => { t.select(); document.execCommand('copy'); statutAudio.textContent = 'Timestamps copiés.'; }
   );
 };
+
+// --- FONCTIONNALITÉ GÉNÉRATEUR VIDÉO ---
+document.getElementById('genererVideo').addEventListener('click', async () => {
+  if (morceauxVideo.length === 0) {
+    alert("Veuillez ajouter au moins une musique MP3 !");
+    return;
+  }
+
+  const btn = document.getElementById('genererVideo');
+  btn.disabled = true;
+  barreVideo.style.display = 'block';
+  barreVideo.value = 0;
+  statutVideo.textContent = "Décodage et assemblage de l'audio...";
+  document.getElementById('resultatVideo').style.display = 'none';
+
+  try {
+    const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+    const decodedBuffers = [];
+
+    // 1. Décodage de chaque MP3
+    for (let i = 0; i < morceauxVideo.length; i++) {
+      statutVideo.textContent = `Décodage piste audio ${i + 1}/${morceauxVideo.length}...`;
+      const buffer = await decoder(audioCtx, morceauxVideo[i]);
+      decodedBuffers.push(buffer);
+      barreVideo.value = Math.round(((i + 1) / morceauxVideo.length) * 40);
+      await pause();
+    }
+
+    // 2. Fusion dans un AudioBuffer unique
+    const dureeTotaleSec = decodedBuffers.reduce((acc, b) => acc + b.duration, 0);
+    const totalSamples = Math.ceil(dureeTotaleSec * audioCtx.sampleRate);
+    const audioCompletBuffer = audioCtx.createBuffer(CANAUX, totalSamples, audioCtx.sampleRate);
+
+    let offset = 0;
+    for (const buf of decodedBuffers) {
+      for (let ch = 0; ch < CANAUX; ch++) {
+        const canalData = ch < buf.numberOfChannels ? buf.getChannelData(ch) : buf.getChannelData(0);
+        audioCompletBuffer.getChannelData(ch).set(canalData, offset);
+      }
+      offset += buf.length;
+    }
+
+    statutVideo.textContent = "Préparation de l'enregistrement de la vidéo...";
+    barreVideo.value = 50;
+
+    // 3. Préparation du Web Audio Source Node & Destination
+    const mediaStreamDest = audioCtx.createMediaStreamDestination();
+    const sourceNode = audioCtx.createBufferSource();
+    sourceNode.buffer = audioCompletBuffer;
+    sourceNode.connect(mediaStreamDest);
+
+    // 4. Préparation du Canvas Vidéo (1280x720 HD)
+    const canvas = document.createElement('canvas');
+    canvas.width = 1280;
+    canvas.height = 720;
+    const ctx = canvas.getContext('2d');
+
+    function dessinerFond() {
+      ctx.fillStyle = '#111827';
+      ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+      if (imageFondElement) {
+        const ratio = Math.min(canvas.width / imageFondElement.width, canvas.height / imageFondElement.height);
+        const nw = imageFondElement.width * ratio;
+        const nh = imageFondElement.height * ratio;
+        const nx = (canvas.width - nw) / 2;
+        const ny = (canvas.height - nh) / 2;
+        ctx.drawImage(imageFondElement, nx, ny, nw, nh);
+      } else {
+        // Fond par défaut avec du texte si aucune image fournie
+        ctx.fillStyle = '#ffffff';
+        ctx.font = 'bold 40px Arial';
+        ctx.textAlign = 'center';
+        ctx.fillText("Studio Vidéo Audio", canvas.width / 2, canvas.height / 2);
+      }
+    }
+
+    dessinerFond();
+
+    // Capture de la vidéo à 30 FPS
+    const canvasStream = canvas.captureStream(30);
+    const combinedStream = new MediaStream([
+      ...canvasStream.getVideoTracks(),
+      ...mediaStreamDest.stream.getAudioTracks()
+    ]);
+
+    // Format vidéo supporté
+    let optionsFormat = { mimeType: 'video/webm;codecs=vp9,opus' };
+    if (!MediaRecorder.isTypeSupported(optionsFormat.mimeType)) {
+      optionsFormat = { mimeType: 'video/webm' };
+    }
+
+    const recorder = new MediaRecorder(combinedStream, optionsFormat);
+    const chunks = [];
+
+    recorder.ondataavailable = e => { if (e.data.size > 0) chunks.push(e.data); };
+
+    recorder.onstop = () => {
+      const videoBlob = new Blob(chunks, { type: recorder.mimeType || 'video/webm' });
+      const videoUrl = URL.createObjectURL(videoBlob);
+      urlsActives.push(videoUrl);
+
+      const lecteur = document.getElementById('lecteurVideo');
+      lecteur.src = videoUrl;
+
+      const lienDownload = document.getElementById('lienTelechargerVideo');
+      lienDownload.href = videoUrl;
+      lienDownload.download = 'video-audio-fond.webm';
+
+      document.getElementById('resultatVideo').style.display = 'block';
+      statutVideo.textContent = "Vidéo générée avec succès !";
+      barreVideo.value = 100;
+      btn.disabled = false;
+      audioCtx.close();
+    };
+
+    // Lancement du rendu et de l'enregistrement accéléré
+    recorder.start();
+    sourceNode.start(0);
+
+    const tempsDebut = Date.now();
+    const updateProgression = () => {
+      const tempsEcoule = audioCtx.currentTime;
+      const pct = 50 + Math.round((tempsEcoule / dureeTotaleSec) * 50);
+      barreVideo.value = Math.min(100, pct);
+      statutVideo.textContent = `Encodage vidéo en cours : ${formaterTemps(tempsEcoule)} / ${formaterTemps(dureeTotaleSec)}`;
+
+      dessinerFond();
+
+      if (tempsEcoule < dureeTotaleSec) {
+        requestAnimationFrame(updateProgression);
+      } else {
+        setTimeout(() => recorder.stop(), 500);
+      }
+    };
+
+    requestAnimationFrame(updateProgression);
+
+  } catch (err) {
+    console.error(err);
+    statutVideo.textContent = "Erreur lors de la génération vidéo : " + err.message;
+    btn.disabled = false;
+  }
+});
 </script>
 </body>
 </html>
